@@ -18,11 +18,19 @@ load_dotenv(PROJECT_ROOT / ".env")
 def get_api_key() -> str:
     """Get Anthropic API key from environment."""
     key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not key or key.startswith("sk-ant-..."):
+    key = key.strip()
+    
+    if not key:
+        env_keys = list(os.environ.keys())
+        has_anthropic = any("ANTHROPIC" in k.upper() for k in env_keys)
         raise ValueError(
-            "ANTHROPIC_API_KEY not set. "
-            "Copy .env.example to .env and add your API key."
+            f"ANTHROPIC_API_KEY is empty or missing! (Debug: has_anthropic_in_env={has_anthropic}). "
+            "Please ensure you clicked 'Redeploy' on Railway after adding the variable."
         )
+        
+    if key.startswith("sk-ant-..."):
+        raise ValueError("API Key is still the placeholder text.")
+        
     return key
 
 
