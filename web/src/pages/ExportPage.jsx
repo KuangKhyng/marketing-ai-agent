@@ -94,17 +94,6 @@ export default function ExportPage({ campaignData, setPhase }) {
         Chiến dịch đã sẵn sàng. Copy trực tiếp hoặc download assets.
       </p>
 
-      {/* Stats */}
-      <div className="flex justify-center gap-6 mb-8 relative z-10 w-full max-w-2xl">
-        <div className="glass-panel p-6 rounded-2xl flex-1 border-t-2 border-t-purple-500/50">
-          <p className="text-xs font-bold uppercase tracking-wider mb-2 opacity-60">Run ID</p>
-          <p className="font-mono text-xl tracking-wider">{runId.slice(0, 8)}</p>
-        </div>
-        <div className="glass-panel p-6 rounded-2xl flex-1 border-t-2 border-t-yellow-400/50">
-          <p className="text-xs font-bold uppercase tracking-wider mb-2 opacity-60">Cost Estimate</p>
-          <p className="font-mono font-bold text-3xl text-yellow-400">${campaignData.cost_estimate?.toFixed(3)}</p>
-        </div>
-      </div>
 
       {/* Smart Copy Section */}
       {pieces.length > 0 && (
