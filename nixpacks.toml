@@ -2,6 +2,6 @@ providers = ["python", "node"]
 
 [phases.build]
 cmds = [
-    "cd web && npm install --include=dev && npm run build",
+    "cd web && npm install && npm run build",
     "pip install -r requirements.txt"
 ]
