@@ -57,6 +57,10 @@ def brief_parser_node(state: dict) -> dict:
 
     try:
         brief = _call_claude_for_brief(state["raw_input"], config, node_trace)
+
+        # ARCHITECTURAL FIX: Brand comes from UI, not from LLM
+        brief = _override_brand_from_state(brief, state)
+        
         node_trace.output_summary = f"Parsed brief: goal={brief.goal.value}, channels={[c.value for c in brief.channels]}"
         node_trace.finished_at = datetime.now()
 
@@ -73,6 +77,10 @@ def brief_parser_node(state: dict) -> dict:
                 state["raw_input"], config, node_trace,
                 retry_hint="Lần trước bạn trả về sai format. Hãy trả về CHÍNH XÁC theo schema CampaignBrief. Mọi field enum phải dùng đúng giá trị cho phép."
             )
+            
+            # ARCHITECTURAL FIX: Brand comes from UI, not from LLM
+            brief = _override_brand_from_state(brief, state)
+            
             node_trace.output_summary = f"Parsed brief (retry): goal={brief.goal.value}"
             node_trace.finished_at = datetime.now()
 
@@ -134,3 +142,44 @@ def _call_claude_for_brief(
         }
 
     return result
+
+
+def _override_brand_from_state(brief: CampaignBrief, state: dict) -> CampaignBrief:
+    """
+    Override brand fields based on what user selected in UI.
+    
+    ARCHITECTURAL PRINCIPLE: Brief Parser NEVER determines brand.
+    Brand comes from UI selection (state["brand_id"]), not from LLM.
+    This function guarantees brand info is always correct regardless
+    of what LLM hallucinated.
+    """
+    brand_id = state.get("brand_id")
+
+    if brand_id:
+        # User selected a brand in UI → load brand metadata
+        try:
+            from src.knowledge.brand_manager import BrandManager
+            manager = BrandManager()
+            brand_meta = manager._load_brand_meta(brand_id)
+
+            if brand_meta:
+                brief.brand.name = brand_meta.get("name", brand_id)
+                brief.brand.voice_profile_id = brand_id
+                brief.brand.forbidden_claims = brand_meta.get("forbidden_claims", [])
+                brief.brand.mandatory_terms = brand_meta.get("mandatory_terms", [])
+            else:
+                # Brand metadata not found — fallback to generic
+                brief.brand.name = ""
+                brief.brand.voice_profile_id = "default"
+        except Exception:
+            # If brand_manager fails, keep whatever LLM returned but clear name
+            brief.brand.name = brand_id
+            brief.brand.voice_profile_id = brand_id
+    else:
+        # Generic mode — FORCE empty brand, override anything LLM bịa
+        brief.brand.name = ""
+        brief.brand.voice_profile_id = "default"
+        brief.brand.forbidden_claims = []
+        brief.brand.mandatory_terms = []
+
+    return brief
