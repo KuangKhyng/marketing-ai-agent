@@ -10,3 +10,11 @@ restartPolicyMaxRetries = 3
 
 [service]
 internalPort = 8000
+
+[[volumes]]
+mount = "/app/knowledge_base"
+name = "knowledge-data"
+
+[[volumes]]
+mount = "/app/outputs"
+name = "campaign-outputs"

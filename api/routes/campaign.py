@@ -24,7 +24,7 @@ def start_campaign(input: CampaignInput):
     runner = PipelineRunner()
     raw_input = input.to_raw_input()
 
-    state = runner.phase_1_parse(raw_input)
+    state = runner.phase_1_parse(raw_input, brand_id=input.brand_id)
 
     if state.get("error"):
         raise HTTPException(status_code=500, detail=state["error"])

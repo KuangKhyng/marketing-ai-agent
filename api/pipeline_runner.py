@@ -18,8 +18,8 @@ class PipelineRunner:
     def __init__(self):
         self.state = None
 
-    def phase_1_parse(self, raw_input: str) -> dict:
-        self.state = self._init_state(raw_input)
+    def phase_1_parse(self, raw_input: str, brand_id: str = None) -> dict:
+        self.state = self._init_state(raw_input, brand_id=brand_id)
 
         self.state.update(brief_parser_node(self.state))
         if self.state.get("error"):
@@ -83,9 +83,10 @@ class PipelineRunner:
             pieces[index].body = new_body
             pieces[index].word_count = len(new_body.split())
 
-    def _init_state(self, raw_input: str) -> dict:
+    def _init_state(self, raw_input: str, brand_id: str = None) -> dict:
         return {
             "raw_input": raw_input,
+            "brand_id": brand_id,
             "brief": None,
             "context_pack": None,
             "strategy": None,

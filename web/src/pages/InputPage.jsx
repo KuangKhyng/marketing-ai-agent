@@ -1,10 +1,14 @@
-import { useState } from 'react';
-import { campaignAPI } from '../api/client';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { campaignAPI, brandsAPI } from '../api/client';
 import { Loader2, Sparkles, Wand2 } from 'lucide-react';
 
 export default function InputPage({ setCampaignData, setPhase, loading, setLoading }) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState('structured');
   const [freeText, setFreeText] = useState('');
+  const [brands, setBrands] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState(null);
   const [form, setForm] = useState({
     goal: 'awareness',
     product: '',
@@ -14,12 +18,16 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
     cta: '',
   });
 
+  useEffect(() => {
+    brandsAPI.list().then(res => setBrands(res.data)).catch(() => {});
+  }, []);
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
       const input = mode === 'free_text'
-        ? { mode: 'free_text', raw_input: freeText }
-        : { mode: 'structured', ...form };
+        ? { mode: 'free_text', raw_input: freeText, brand_id: selectedBrand }
+        : { mode: 'structured', ...form, brand_id: selectedBrand };
 
       const { data } = await campaignAPI.start(input);
       setCampaignData(data);
@@ -41,6 +49,40 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
       </div>
 
       <div className="glass-panel p-5 md:p-8 rounded-2xl w-full max-w-full overflow-hidden">
+        {/* Brand Selector */}
+        {brands.length > 0 && (
+          <div className="mb-6">
+            <label className="text-xs font-medium mb-2 block opacity-80">Brand Knowledge</label>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => setSelectedBrand(null)}
+                      className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                        !selectedBrand
+                          ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
+                          : 'bg-[#252540]/60 text-gray-400 border border-white/5 hover:border-purple-500/50'
+                      }`}>
+                🌐 Generic (không brand)
+              </button>
+              {brands.map(brand => (
+                <button key={brand.id}
+                        onClick={() => setSelectedBrand(brand.id)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                          selectedBrand === brand.id
+                            ? 'text-white shadow-lg'
+                            : 'bg-[#252540]/60 text-gray-400 border border-white/5 hover:border-purple-500/50'
+                        }`}
+                        style={selectedBrand === brand.id ? { backgroundColor: brand.color } : {}}>
+                  {brand.icon} {brand.name}
+                </button>
+              ))}
+              <button onClick={() => navigate('/knowledge')}
+                      className="px-4 py-2.5 rounded-xl text-sm flex items-center gap-1 cursor-pointer"
+                      style={{ color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>
+                + Thêm brand
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Mode toggle */}
         <div className="flex flex-col md:flex-row gap-2 mb-6 md:mb-8 bg-[#1a1a2e]/50 p-1.5 rounded-xl border border-white/5 md:inline-flex backdrop-blur-md w-full md:w-auto">
           {['free_text', 'structured'].map(m => (

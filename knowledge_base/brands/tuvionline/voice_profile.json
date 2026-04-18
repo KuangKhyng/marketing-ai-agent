@@ -1,0 +1,36 @@
+{
+  "profile_id": "default",
+  "created_at": "2026-01-01",
+  "analyzed_from": "10 sample posts",
+  "tone": {
+    "primary": "casual-spiritual",
+    "secondary": "empathetic",
+    "formality": 0.3
+  },
+  "writing_style": {
+    "avg_sentence_length": 15,
+    "avg_paragraph_length": 3,
+    "perspective": "first_person_plural",
+    "uses_questions": true,
+    "question_frequency": "every 3-4 paragraphs"
+  },
+  "vocabulary": {
+    "preferred": ["khám phá", "hành trình", "bản mệnh", "năng lượng", "hiểu sâu hơn", "góc nhìn mới", "la bàn cuộc sống"],
+    "avoided": ["click ngay", "mua liền", "ưu đãi sốc", "chỉ còn X ngày", "số phận đã định"],
+    "emoji_style": "moderate_meaningful",
+    "common_emojis": ["✨", "🌙", "💫", "🔮", "🌿"]
+  },
+  "content_patterns": {
+    "opening_hook_style": "question_or_insight",
+    "cta_style": "soft_invite",
+    "closing_style": "reflective_or_question",
+    "storytelling_frequency": "high"
+  },
+  "anti_ai_rules": [
+    "Never start with 'Bạn đã bao giờ'",
+    "Never use 'Trong thế giới hiện đại'",
+    "Avoid listing more than 3 items with numbers",
+    "Avoid smooth transitions like 'Không chỉ vậy', 'Hơn thế nữa'",
+    "Never end with 'Hãy bắt đầu hành trình'"
+  ]
+}
