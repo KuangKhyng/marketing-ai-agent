@@ -61,7 +61,7 @@ def strategist_node(state: dict) -> dict:
         brief = state["brief"]
         context_pack = state["context_pack"]
 
-        user_message = _build_user_message(brief, context_pack)
+        user_message = _build_user_message(brief, context_pack, state.get("strategy_feedback"))
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -107,7 +107,7 @@ def strategist_node(state: dict) -> dict:
         }
 
 
-def _build_user_message(brief, context_pack: dict) -> str:
+def _build_user_message(brief, context_pack: dict, strategy_feedback: str = None) -> str:
     """Build the detailed user message with brief and context."""
     brief_json = brief.model_dump_json(indent=2)
 
@@ -130,6 +130,15 @@ def _build_user_message(brief, context_pack: dict) -> str:
     # Add additional context if present
     if context_pack.get("additional_context"):
         sections.append(f"## Additional Context (HIGHEST PRIORITY)\n{context_pack['additional_context']}")
+
+    # Inject user feedback if this is a strategy revision
+    if strategy_feedback:
+        sections.append(
+            f"## ⚠️ USER FEEDBACK — BẮT BUỘC PHẢI SỬA\n"
+            f"User đã review strategy trước đó và yêu cầu sửa:\n\n"
+            f"{strategy_feedback}\n\n"
+            f"Hãy viết lại strategy MỚI HOÀN TOÀN, address tất cả feedback trên."
+        )
 
     return "\n\n---\n\n".join(sections)
 

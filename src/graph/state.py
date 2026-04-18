@@ -26,6 +26,7 @@ class CampaignState(TypedDict):
 
     # Strategy
     strategy: Optional[str]                     # campaign strategy from Strategist (text)
+    strategy_feedback: Optional[str]            # user feedback for strategy revision (Web UI)
     human_approved: bool                        # whether human approved the strategy
 
     # Content
