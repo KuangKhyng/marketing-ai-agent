@@ -19,10 +19,16 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
               Campaign Engine
             </p>
           </div>
-          <button onClick={() => { if (onReset) onReset(); navigate('/'); }}
-                  className="md:hidden px-4 py-2 rounded-xl text-xs font-semibold transition-all btn-secondary flex items-center gap-2">
-            <span>✨</span> New
-          </button>
+          <div className="md:hidden flex items-center gap-2">
+            <button onClick={() => navigate('/knowledge')}
+                    className="px-3 py-2 rounded-xl text-lg transition-all btn-secondary" title="Knowledge Base">
+              📚
+            </button>
+            <button onClick={() => { if (onReset) onReset(); navigate('/'); }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold transition-all btn-primary flex items-center gap-2">
+              <span>✨</span> New
+            </button>
+          </div>
         </div>
 
         {/* Campaign phase navigation */}
