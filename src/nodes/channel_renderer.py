@@ -182,8 +182,14 @@ def _render_single_piece(
         # Post-processing: deduplicate headline/hook/body
         piece = _dedup_content_fields(piece)
 
-        # Post-processing: ensure hashtag prefix
-        piece.hashtags = [h if h.startswith("#") else f"#{h}" for h in piece.hashtags]
+        # Post-processing: ensure hashtag prefix + force lowercase + limit count
+        piece.hashtags = [
+            (h if h.startswith("#") else f"#{h}").lower()
+            for h in piece.hashtags
+        ]
+        # Limit hashtags per platform
+        max_hashtags = 5 if channel == Channel.FACEBOOK else 10
+        piece.hashtags = piece.hashtags[:max_hashtags]
 
         # Token usage tracking
         node_trace.model_used = config["model"]
