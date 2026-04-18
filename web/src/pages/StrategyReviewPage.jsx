@@ -11,7 +11,12 @@ const FEEDBACK_OPTIONS = [
   { key: 'platform', label: 'Platform approach chưa đúng' },
 ];
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useToast } from '../components/Toast';
+
 export default function StrategyReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
+  const { showToast, Toast } = useToast();
   const [checks, setChecks] = useState([]);
   const [comment, setComment] = useState('');
 
@@ -26,7 +31,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       setCampaignData(data);
       setPhase('content_review');
     } catch(err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -34,7 +39,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
 
   const handleRevise = async () => {
     if (checks.length === 0 && !comment) {
-      alert('Vui lòng chọn ít nhất 1 vấn đề hoặc viết comment.');
+      showToast('Vui lòng chọn ít nhất 1 vấn đề hoặc viết comment.');
       return;
     }
     setLoading(true);
@@ -48,7 +53,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       setComment('');
       setChecks([]);
     } catch(err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -64,10 +69,14 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       </div>
 
       {/* Strategy content */}
-      <div className="glass-panel rounded-2xl p-8 mb-8 whitespace-pre-wrap leading-relaxed text-base font-medium text-white/90 shadow-xl relative overflow-hidden">
+      <div className="glass-panel rounded-2xl p-8 mb-8 text-white/90 shadow-xl relative overflow-hidden prose prose-invert prose-sm max-w-none">
         <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"></div>
-        <div className="relative z-10">{campaignData?.strategy}</div>
+        <div className="relative z-10">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {campaignData?.strategy || ''}
+          </ReactMarkdown>
+        </div>
       </div>
 
       {campaignData?.revision_count > 0 && (
@@ -121,6 +130,22 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
           Approve — Tạo Content
         </button>
       </div>
+
+      {loading && checks.length === 0 && !comment && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+          <div className="glass-panel p-8 rounded-2xl text-center max-w-sm animate-in zoom-in-95 duration-300">
+            <Loader2 className="w-10 h-10 animate-spin text-purple-400 mx-auto mb-4" />
+            <p className="text-lg font-semibold mb-2 text-white">Đang tạo content...</p>
+            <p className="text-sm text-gray-400 mb-4">AI đang thiết kế nội dung chi tiết cho các kênh.</p>
+            <div className="w-full bg-[#0f0f1a] h-2 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 w-full animate-pulse"></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-4">Thường mất khoảng 30-60 giây.</p>
+          </div>
+        </div>
+      )}
+
+      <Toast />
     </div>
   );
 }

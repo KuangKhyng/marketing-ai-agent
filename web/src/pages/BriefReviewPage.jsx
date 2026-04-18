@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, Edit, Loader2 } from 'lucide-react';
+import { Check, Edit, Loader2, Database } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 export default function BriefReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
+  const { showToast, Toast } = useToast();
   const brief = campaignData?.brief;
+  const context_info = campaignData?.context_info;
   const [editMode, setEditMode] = useState(false);
   const [editedBrief, setEditedBrief] = useState(brief ? {
     goal: brief.goal,
@@ -23,7 +26,7 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
       setCampaignData(data);
       setPhase('strategy_review');
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -119,6 +122,44 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
         </div>
       )}
 
+      {/* Context Info Transparency */}
+      {context_info && (
+        <div className="glass-panel p-6 rounded-2xl mb-8 border border-blue-500/20 bg-blue-500/5">
+          <div className="flex items-center gap-2 mb-4 text-blue-400">
+            <Database className="w-5 h-5" />
+            <h3 className="font-bold text-sm tracking-widest uppercase">Knowledge Base Context Loaded</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Mode</p>
+              <p className="font-medium text-white capitalize">{context_info.mode}</p>
+            </div>
+            {context_info.brand_name && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Brand</p>
+                <p className="font-medium text-white">{context_info.brand_name}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Docs Loaded</p>
+              <p className="font-medium text-white">{context_info.loaded_docs?.length || 0}</p>
+            </div>
+          </div>
+          {context_info.loaded_docs?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Sources File</p>
+              <div className="flex flex-wrap gap-2">
+                {context_info.loaded_docs.map((doc, idx) => (
+                  <span key={idx} className="px-2 py-1 bg-[#1a1a2e] border border-white/5 rounded-lg text-xs text-gray-300">
+                    {doc}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Buttons */}
       <div className="flex gap-4">
         <button onClick={() => setEditMode(!editMode)} disabled={loading}
@@ -132,6 +173,7 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
           Approve — Tạo Strategy
         </button>
       </div>
+      <Toast />
     </div>
   );
 }

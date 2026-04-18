@@ -69,6 +69,12 @@ class ContentFeedback(BaseModel):
 
 # === RESPONSE SCHEMAS ===
 
+class ContextInfo(BaseModel):
+    mode: str
+    brand_name: str = ""
+    loaded_docs: list[str] = []
+    total_tokens_estimate: int = 0
+
 class PipelineStatus(BaseModel):
     run_id: str
     phase: str  # "brief_review" | "strategy_review" | "content_review" | "final_review" | "completed" | "error"
@@ -80,3 +86,4 @@ class PipelineStatus(BaseModel):
     error: Optional[str] = None
     revision_count: int = 0
     cost_estimate: float = 0.0
+    context_info: Optional[ContextInfo] = None

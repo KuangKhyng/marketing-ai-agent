@@ -17,8 +17,8 @@
 
 ## Trending Formats
 - Storytime: kể chuyện cá nhân, relatable
-- POV: "POV: bạn là người cung X và..."
-- "Things I wish I knew": "3 điều mình ước biết sớm hơn về tử vi"
+- POV: "POV: bạn là [persona] và..."
+- "Things I wish I knew": "3 điều mình ước biết sớm hơn về [chủ đề]"
 - Unpopular opinion: ý kiến gây tranh luận
 - Reply to comment: trả lời comment hay → video mới
 - "Did you know": thông tin thú vị, bite-sized

@@ -9,9 +9,48 @@ from api.pipeline_runner import PipelineRunner
 
 router = APIRouter()
 
-# In-memory store for active pipeline sessions
-# Production: use Redis or database
-sessions: dict[str, PipelineRunner] = {}
+from datetime import datetime, timedelta
+from threading import Lock
+
+# Session với TTL để tránh memory leak
+class SessionStore:
+    def __init__(self, ttl_minutes: int = 60):
+        self._sessions: dict[str, dict] = {}
+        self._lock = Lock()
+        self.ttl = timedelta(minutes=ttl_minutes)
+
+    def set(self, run_id: str, runner: PipelineRunner):
+        with self._lock:
+            self._sessions[run_id] = {
+                "runner": runner,
+                "created_at": datetime.now(),
+            }
+            self._cleanup()
+
+    def get(self, run_id: str) -> PipelineRunner | None:
+        with self._lock:
+            entry = self._sessions.get(run_id)
+            if not entry:
+                return None
+            if datetime.now() - entry["created_at"] > self.ttl:
+                del self._sessions[run_id]
+                return None
+            return entry["runner"]
+            
+    def __setitem__(self, run_id: str, runner):
+        self.set(run_id, runner)
+
+    def _cleanup(self):
+        now = datetime.now()
+        expired = [k for k, v in self._sessions.items() if now - v["created_at"] > self.ttl]
+        for k in expired:
+            del self._sessions[k]
+
+    @property
+    def count(self) -> int:
+        return len(self._sessions)
+
+sessions = SessionStore(ttl_minutes=120)
 
 
 @router.post("/start", response_model=PipelineStatus)
@@ -21,6 +60,12 @@ def start_campaign(input: CampaignInput):
     Runs Phase 1 (parse brief + build context).
     Returns brief for review.
     """
+    if input.brand_id:
+        from src.knowledge.brand_manager import BrandManager
+        manager = BrandManager()
+        if not manager.get_brand(input.brand_id):
+            raise HTTPException(status_code=404, detail=f"Brand '{input.brand_id}' not found")
+
     runner = PipelineRunner()
     raw_input = input.to_raw_input()
 
@@ -32,11 +77,21 @@ def start_campaign(input: CampaignInput):
     run_id = state["trace"].run_id
     sessions[run_id] = runner
 
+    context_pack = state.get("context_pack", {})
+    from api.schemas import ContextInfo
+    context_info = ContextInfo(
+        mode=context_pack.get("mode", "generic"),
+        brand_name=context_pack.get("brand_name", ""),
+        loaded_docs=context_pack.get("loaded_docs", []),
+        total_tokens_estimate=len(str(context_pack)) // 4
+    )
+
     return PipelineStatus(
         run_id=run_id,
         phase="brief_review",
         brief=state["brief"].model_dump() if state.get("brief") else None,
         cost_estimate=state["trace"].total_cost_estimate,
+        context_info=context_info,
     )
 
 
@@ -179,11 +234,12 @@ def quick_action(run_id: str, action: dict):
 
     prompt = action_prompts.get(action_type, action_prompts["rewrite"])
 
-    from src.config.settings import get_api_key
+    from src.config.settings import get_api_key, get_model_config
+    config = get_model_config('channel_renderer')
     llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        temperature=0.7,
-        max_tokens=2000,
+        model=config.get('model', 'claude-3-5-haiku-20241022'),
+        temperature=config.get('temperature', 0.7),
+        max_tokens=config.get('max_tokens', 2000),
         api_key=get_api_key(),
     )
 

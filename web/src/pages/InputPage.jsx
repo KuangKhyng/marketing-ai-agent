@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { campaignAPI, brandsAPI } from '../api/client';
 import { Loader2, Sparkles, Wand2 } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 export default function InputPage({ setCampaignData, setPhase, loading, setLoading }) {
   const navigate = useNavigate();
+  const { showToast, Toast } = useToast();
   const [mode, setMode] = useState('structured');
   const [freeText, setFreeText] = useState('');
   const [brands, setBrands] = useState([]);
@@ -33,7 +35,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
       setCampaignData(data);
       setPhase('brief_review');
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -172,6 +174,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
           )}
         </button>
       </div>
+      <Toast />
     </div>
   );
 }
