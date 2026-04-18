@@ -15,6 +15,7 @@ from src.models.trace import RunTrace
 class CampaignState(TypedDict):
     # Input
     raw_input: str                              # user's natural language input
+    brand_id: Optional[str]                     # selected brand ID, None = generic mode
 
     # Parsed
     brief: Optional[CampaignBrief]              # structured brief from Brief Parser

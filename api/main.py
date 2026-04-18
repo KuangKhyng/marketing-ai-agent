@@ -20,10 +20,10 @@ app.add_middleware(
 
 # Include routers
 from api.routes.campaign import router as campaign_router
-# from api.routes.knowledge import router as knowledge_router
+from api.routes.brands import router as brands_router
 
 app.include_router(campaign_router, prefix="/api/campaigns", tags=["campaigns"])
-# app.include_router(knowledge_router, prefix="/api/knowledge", tags=["knowledge"])
+app.include_router(brands_router, prefix="/api/brands", tags=["brands"])
 
 @app.get("/api/health")
 def health():

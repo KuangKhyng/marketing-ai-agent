@@ -1,0 +1,19 @@
+{
+  "id": "tuvionline",
+  "name": "TửViOnline",
+  "description": "Nền tảng xem tử vi online cho Gen Z",
+  "created_at": "2026-04-18T23:01:55.672044",
+  "updated_at": "2026-04-18T23:01:55.672044",
+  "color": "#6c5ce7",
+  "icon": "✦",
+  "default_channels": [
+    "facebook",
+    "instagram"
+  ],
+  "default_goal": "awareness",
+  "forbidden_claims": [
+    "cam kết kết quả chắc chắn",
+    "tiên tri tương lai"
+  ],
+  "mandatory_terms": []
+}

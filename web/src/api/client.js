@@ -19,4 +19,24 @@ export const campaignAPI = {
   history: () => api.get('/campaigns/history'),
 };
 
+export const brandsAPI = {
+  list: () => api.get('/brands/'),
+  get: (brandId) => api.get(`/brands/${brandId}`),
+  create: (data) => api.post('/brands/', data),
+  update: (brandId, data) => api.put(`/brands/${brandId}`, data),
+  delete: (brandId) => api.delete(`/brands/${brandId}`),
+
+  // Documents
+  getDoc: (brandId, docPath) => api.get(`/brands/${brandId}/docs/${docPath}`),
+  saveDoc: (brandId, docPath, content) => api.put(`/brands/${brandId}/docs/${docPath}`, { content }),
+  deleteDoc: (brandId, docPath) => api.delete(`/brands/${brandId}/docs/${docPath}`),
+
+  // Voice Profile
+  getVoice: (brandId) => api.get(`/brands/${brandId}/voice-profile`),
+  updateVoice: (brandId, profile) => api.put(`/brands/${brandId}/voice-profile`, { profile }),
+
+  // Preview
+  preview: (brandId) => api.get(`/brands/${brandId}/preview`),
+};
+
 export default api;

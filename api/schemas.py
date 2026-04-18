@@ -9,6 +9,9 @@ class CampaignInput(BaseModel):
     """Input for starting a new campaign."""
     mode: str = "free_text"  # "free_text" | "structured"
 
+    # Brand selection (None = generic mode)
+    brand_id: Optional[str] = None
+
     # Free text mode
     raw_input: Optional[str] = None
 

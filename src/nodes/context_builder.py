@@ -36,11 +36,14 @@ def context_builder_node(state: dict) -> dict:
 
     try:
         brief = state["brief"]
-        context_pack = build_context_pack(brief)
+        brand_id = state.get("brand_id")  # None = generic mode
+
+        context_pack = build_context_pack(brief, brand_id=brand_id)
 
         # Summarize what was loaded
         loaded_keys = [k for k, v in context_pack.items() if v]
-        node_trace.output_summary = f"Loaded context: {', '.join(loaded_keys)}"
+        mode = context_pack.get("mode", "generic")
+        node_trace.output_summary = f"Mode: {mode}, brand: {brand_id or 'generic'}, loaded: {', '.join(loaded_keys)}"
         node_trace.retrieved_context_ids = loaded_keys
         node_trace.finished_at = datetime.now()
 
