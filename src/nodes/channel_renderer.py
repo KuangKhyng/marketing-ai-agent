@@ -71,26 +71,34 @@ def channel_renderer_node(state: dict) -> dict:
 
         all_pieces = []
 
+        # Collect all render tasks
+        render_tasks = []
         for channel in brief.channels:
-            # Get deliverables for this channel
             channel_deliverables = [
                 d for d in brief.deliverables
                 if d in CHANNEL_DELIVERABLES.get(channel, [])
             ]
-            # If no specific deliverables match, use channel defaults
             if not channel_deliverables:
                 channel_deliverables = CHANNEL_DELIVERABLES.get(channel, [Deliverable.POST])
 
             for deliverable in channel_deliverables:
-                piece = _render_single_piece(
-                    channel=channel,
-                    deliverable=deliverable,
-                    brief=brief,
-                    master_message=master_message,
-                    context_pack=context_pack,
-                    config=config,
-                    node_trace=node_trace,
-                )
+                render_tasks.append((channel, deliverable))
+
+        # Execute all renders in parallel (I/O-bound LLM calls)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def render_one(args):
+            ch, deliv = args
+            return _render_single_piece(
+                channel=ch, deliverable=deliv,
+                brief=brief, master_message=master_message,
+                context_pack=context_pack, config=config, node_trace=node_trace,
+            )
+
+        with ThreadPoolExecutor(max_workers=len(render_tasks)) as executor:
+            futures = {executor.submit(render_one, task): task for task in render_tasks}
+            for future in as_completed(futures):
+                piece = future.result()
                 if piece:
                     all_pieces.append(piece)
 
