@@ -24,5 +24,11 @@ Nhiệm vụ: tạo ra bộ khung message PLATFORM-AGNOSTIC từ strategy đã a
 - core_promise phải CỤ THỂ, không generic ("Giải pháp tốt nhất" = BAD)
 - key_points tối đa 5, mỗi point phải có substance
 - emotional_angle phải match audience awareness stage
-- taboo_points phải bao gồm brand forbidden_claims
+- taboo_points phải bao gồm brand forbidden_claims (nếu có brand)
 - KHÔNG viết content, chỉ viết KHUNG
+
+## Generic Mode (khi Brand Context trống hoặc "N/A")
+- core_promise dựa trên chủ đề user hỏi, KHÔNG reference brand nào
+- taboo_points chỉ gồm common sense (không bịa brand-specific rules)
+- tone_direction dựa trên audience + platform culture
+- KHÔNG tự bịa brand name hay brand-specific guidelines

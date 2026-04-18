@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
 import { Check, RotateCcw, Loader2, Wand2, Scissors, MessageCircle, Sparkles } from 'lucide-react';
+import { useToast } from '../components/Toast';
+
+function formatForPlatform(piece) {
+  let text = '';
+  if (piece.body) text += piece.body;
+  if (piece.cta_text) text += '\n\n' + piece.cta_text;
+  if (piece.hashtags?.length) {
+    text += '\n\n' + piece.hashtags.join(' ');
+  }
+  return text;
+}
 
 const QUICK_ACTIONS = [
   { id: 'rewrite', label: '🔄 Viết lại', icon: RotateCcw, color: 'purple' },
@@ -10,6 +21,7 @@ const QUICK_ACTIONS = [
 ];
 
 export default function ContentReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
+  const { showToast, Toast } = useToast();
   const pieces = campaignData?.content?.pieces || [];
   const [activeTab, setActiveTab] = useState(0);
   const [editMode, setEditMode] = useState({});
@@ -34,7 +46,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       setCampaignData(data);
       setPhase('final_review');
     } catch(err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -60,7 +72,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       setFeedback({});
       setEdits({});
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -89,7 +101,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       delete newEdits[activeTab];
       setEdits(newEdits);
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setQuickLoading(null);
     }
@@ -180,12 +192,42 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
               ))}
             </div>
           )}
+          {/* Visual Direction */}
+          {activePiece.visual_direction && (
+            <details className="mt-4 group mb-4">
+              <summary className="text-xs font-bold tracking-wider text-purple-400 cursor-pointer list-none flex items-center gap-2">
+                🎨 VISUAL DIRECTION (click để xem)
+              </summary>
+              <div className="mt-2 p-4 rounded-xl bg-[#0f0f1a]/50 border border-white/5 text-sm text-gray-300 whitespace-pre-wrap">
+                {activePiece.visual_direction}
+              </div>
+            </details>
+          )}
 
+          {/* Notes */}
+          {activePiece.notes && (
+            <details className="mt-3 group mb-4">
+              <summary className="text-xs font-bold tracking-wider text-blue-400 cursor-pointer list-none flex items-center gap-2">
+                📝 NOTES (click để xem)
+              </summary>
+              <div className="mt-2 p-4 rounded-xl bg-[#0f0f1a]/50 border border-white/5 text-sm text-gray-300 whitespace-pre-wrap">
+                {activePiece.notes}
+              </div>
+            </details>
+          )}
           {/* Word count */}
           <div className="flex justify-between items-center mt-6 pt-4 border-t border-white/5">
             <p className="text-xs font-medium text-gray-500">
               {activePiece.word_count} words
             </p>
+            <button onClick={() => {
+              const text = formatForPlatform(activePiece);
+              navigator.clipboard.writeText(text);
+              showToast('Đã copy nội dung chuẩn cho đăng bài!', 'success');
+            }}
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer text-gray-300">
+              📋 Copy Content
+            </button>
           </div>
         </div>
       )}
@@ -252,6 +294,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
           </button>
         )}
       </div>
+      <Toast />
     </div>
   );
 }

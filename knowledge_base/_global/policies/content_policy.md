@@ -1,35 +1,35 @@
-# Content Policy — TửViOnline
+# Content Policy — Quy tắc chung cho mọi content
 
 ## Nguyên tắc chung
-Mọi content phải tuân thủ các nguyên tắc sau. Đây là NGUỒN THAM CHIẾU CAO NHẤT — nếu conflict với bất kỳ guideline nào khác, content policy luôn thắng.
+Mọi content do hệ thống tạo ra phải tuân thủ các nguyên tắc sau.
+Đây là nguồn tham chiếu cao nhất — nếu conflict với guideline nào khác, policy này luôn thắng.
 
 ## 1. Tuyệt đối KHÔNG được
-- Cam kết kết quả tuyệt đối ("chắc chắn sẽ thành công")
-- Tạo sợ hãi để bán hàng ("không xem sẽ gặp xui")
+- Cam kết kết quả tuyệt đối ("chắc chắn sẽ thành công", "100% hiệu quả")
+- Tạo sợ hãi để bán hàng ("nếu không mua sẽ...")
 - Bịa đặt thông tin, số liệu không có thật
-- Claim tử vi là "khoa học" theo nghĩa exact science
 - Thay thế tư vấn y tế, tâm lý, pháp lý chuyên nghiệp
-- Phân biệt đối xử dựa trên cung mệnh ("người cung X không nên...")
-- Dùng ngôn ngữ mê tín cực đoan ("phải cúng/giải hạn ngay")
+- Phân biệt đối xử dưới bất kỳ hình thức nào
+- Dùng ngôn ngữ cực đoan, kích động
 
-## 2. Bắt buộc có
-- Disclaimer khi nói về sức khỏe/tâm lý: "Tử vi là góc nhìn tham khảo, không thay thế tư vấn chuyên môn"
-- Framing empowering: "giúp bạn hiểu hơn" chứ không phải "cho bạn biết phải làm gì"
+## 2. Luôn tuân thủ
+- Trung thực: chỉ claim những gì có trong product docs hoặc input user cung cấp
+- Framing tích cực: tập trung vào lợi ích thật, không hứa hão
 - Tôn trọng quyền tự quyết của user
+- Nếu nội dung liên quan sức khỏe/tâm lý: thêm disclaimer nhắc tham vấn chuyên gia
 
 ## 3. Tone boundaries
-- OK: casual, friendly, insightful, empowering, curious
-- NOT OK: fear-mongering, preachy, condescending, over-promising
-- Spiritual nhưng grounded — không quá "bay bổng"
+- OK: casual, friendly, insightful, empowering, authentic
+- KHÔNG OK: fear-mongering, preachy, condescending, over-promising, manipulative
 
 ## 4. Platform-specific policies
 - Facebook: disclaimer text nếu mention health/wellness
-- Instagram: no misleading before/after implied by tử vi
-- TikTok: no exaggerated claims in voiceover or text overlays
+- Instagram: không dùng misleading before/after
+- TikTok: không dùng exaggerated claims trong voiceover hoặc text overlays
 
 ## 5. Review criteria
 Content phải pass TẤT CẢ 4 điều kiện:
-1. **Brand fit**: đúng tone, đúng vocabulary, không vi phạm forbidden claims
-2. **Factuality**: mọi claim đều có source trong product docs, không bịa
+1. **Brand fit**: đúng tone, đúng vocabulary, không vi phạm brand rules (nếu có brand)
+2. **Factuality**: mọi claim đều có cơ sở, không bịa
 3. **Channel fit**: format đúng platform specs, tone native
 4. **Business fit**: CTA rõ ràng, đúng objective, match audience stage
