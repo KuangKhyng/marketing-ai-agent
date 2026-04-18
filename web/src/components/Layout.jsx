@@ -8,7 +8,7 @@ export default function Layout({ children, phase, phases, onReset }) {
         <div className="p-4 md:p-8 md:pb-4 flex flex-row items-center justify-between w-full md:w-auto">
           <div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500">
-              ✦ Marketing AI
+              ✦ Công chúa Trang
             </h1>
             <p className="text-xs md:text-sm mt-0 md:mt-2 opacity-70 tracking-wide uppercase font-medium hidden md:block">
               Campaign Engine
