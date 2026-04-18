@@ -33,41 +33,41 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-8">
-        <h2 className="text-4xl font-bold mb-3 tracking-tight">Campaign Builder</h2>
-        <p className="text-lg opacity-70">
+      <div className="mb-6 md:mb-8">
+        <h2 className="text-3xl md:text-4xl font-bold mb-2 md:mb-3 tracking-tight">Campaign Builder</h2>
+        <p className="text-base md:text-lg opacity-70">
           Mô tả ý tưởng của bạn, AI sẽ lo phần còn lại.
         </p>
       </div>
 
-      <div className="glass-panel p-8 rounded-2xl">
+      <div className="glass-panel p-5 md:p-8 rounded-2xl w-full max-w-full overflow-hidden">
         {/* Mode toggle */}
-        <div className="flex gap-2 mb-8 bg-[#1a1a2e]/50 p-1.5 rounded-xl border border-white/5 inline-flex backdrop-blur-md">
+        <div className="flex flex-col md:flex-row gap-2 mb-6 md:mb-8 bg-[#1a1a2e]/50 p-1.5 rounded-xl border border-white/5 md:inline-flex backdrop-blur-md w-full md:w-auto">
           {['free_text', 'structured'].map(m => (
             <button key={m} onClick={() => setMode(m)}
-                    className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                    className={`px-4 md:px-6 py-2.5 rounded-lg text-sm md:text-base font-medium transition-all cursor-pointer flex-1 text-center ${
                       mode === m 
                         ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25' 
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}>
-              {m === 'free_text' ? 'Mô tả Tự do (Free Text)' : 'Biểu mẫu (Structured)'}
+              {m === 'free_text' ? 'Mô tả Tự do' : 'Biểu mẫu rập khuôn'}
             </button>
           ))}
         </div>
 
         {mode === 'free_text' ? (
           <div>
-            <label className="text-sm font-medium mb-2 block opacity-80 flex items-center gap-2">
-              <Wand2 className="w-4 h-4 text-purple-400" /> Nhập Prompt
+            <label className="text-sm md:text-base font-medium mb-2 opacity-80 flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-purple-400 shrink-0" /> Nhập Prompt
             </label>
             <textarea value={freeText} onChange={e => setFreeText(e.target.value)}
                       placeholder="Ví dụ: Tạo campaign awareness cho dịch vụ tử vi online, target Gen Z quan tâm tâm linh..."
                       rows={6}
-                      className="w-full p-5 rounded-xl text-md glass-input resize-y placeholder:opacity-40"
+                      className="w-full p-4 md:p-5 rounded-xl text-sm md:text-base glass-input resize-y placeholder:opacity-40"
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
             {/* Goal */}
             <div>
               <label className="text-sm font-medium mb-2 block opacity-80">Mục tiêu</label>
@@ -75,15 +75,15 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
                       className="w-full p-4 rounded-xl text-sm glass-input text-white [&>option]:bg-[#1a1a2e]">
                 <option value="awareness">Awareness (Nhận diện)</option>
                 <option value="engagement">Engagement (Tương tác)</option>
-                <option value="lead_generation">Lead Generation (Khách hàng tiềm năng)</option>
-                <option value="conversion">Conversion (Chuyển đổi mua hàng)</option>
+                <option value="lead_generation">Lead Gen</option>
+                <option value="conversion">Conversion</option>
               </select>
             </div>
 
             {/* Channels */}
             <div>
               <label className="text-sm font-medium mb-2 block opacity-80">Mạng xã hội</label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {['facebook', 'instagram', 'tiktok'].map(ch => (
                   <button key={ch} onClick={() => {
                     const channels = form.channels.includes(ch)
@@ -91,7 +91,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
                       : [...form.channels, ch];
                     setForm({...form, channels});
                   }}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
+                  className={`px-3 md:px-4 py-2.5 md:py-2.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
                     form.channels.includes(ch) 
                       ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md' 
                       : 'bg-[#252540]/60 text-gray-400 border border-white/5 hover:border-purple-500/50'
