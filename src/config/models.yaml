@@ -18,7 +18,7 @@ nodes:
     max_tokens: 2000
 
   channel_renderer:
-    model: "claude-sonnet-4-6"
+    model: "claude-haiku-4-5-20251001"
     temperature: 0.7           # creative
     max_tokens: 3000
 
