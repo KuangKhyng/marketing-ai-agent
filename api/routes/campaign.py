@@ -1,0 +1,236 @@
+from fastapi import APIRouter, HTTPException
+import uuid
+
+from api.schemas import (
+    CampaignInput, BriefEdit, StrategyFeedback,
+    ContentFeedback, PipelineStatus,
+)
+from api.pipeline_runner import PipelineRunner
+
+router = APIRouter()
+
+# In-memory store for active pipeline sessions
+# Production: use Redis or database
+sessions: dict[str, PipelineRunner] = {}
+
+
+@router.post("/start", response_model=PipelineStatus)
+def start_campaign(input: CampaignInput):
+    """
+    Start a new campaign pipeline.
+    Runs Phase 1 (parse brief + build context).
+    Returns brief for review.
+    """
+    runner = PipelineRunner()
+    raw_input = input.to_raw_input()
+
+    state = runner.phase_1_parse(raw_input)
+
+    if state.get("error"):
+        raise HTTPException(status_code=500, detail=state["error"])
+
+    run_id = state["trace"].run_id
+    sessions[run_id] = runner
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="brief_review",
+        brief=state["brief"].model_dump() if state.get("brief") else None,
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
+
+@router.post("/{run_id}/approve-brief", response_model=PipelineStatus)
+def approve_brief(run_id: str, edit: BriefEdit = None):
+    """
+    Approve (or edit) the parsed brief, then generate strategy.
+    Runs Phase 2 (strategist).
+    """
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Apply edits if any
+    if edit:
+        runner.update_brief_fields(edit)
+
+    state = runner.phase_2_strategy()
+
+    if state.get("error"):
+        raise HTTPException(status_code=500, detail=state["error"])
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="strategy_review",
+        brief=state["brief"].model_dump(),
+        strategy=state.get("strategy"),
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
+
+@router.post("/{run_id}/review-strategy", response_model=PipelineStatus)
+def review_strategy(run_id: str, feedback: StrategyFeedback):
+    """
+    Review strategy — approve or request revision.
+    If approved, runs Phase 3 (message architect + channel renderer).
+    If revision requested, re-runs strategist with feedback.
+    """
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not feedback.approved:
+        # Compile feedback and re-run strategist
+        feedback_text = _compile_strategy_feedback(feedback)
+        state = runner.phase_2_strategy(feedback=feedback_text)
+
+        return PipelineStatus(
+            run_id=run_id,
+            phase="strategy_review",  # Stay on strategy review
+            strategy=state.get("strategy"),
+            cost_estimate=state["trace"].total_cost_estimate,
+        )
+
+    # Approved — generate content
+    state = runner.phase_3_content()
+
+    if state.get("error"):
+        raise HTTPException(status_code=500, detail=state["error"])
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="content_review",
+        master_message=state["master_message"].model_dump() if state.get("master_message") else None,
+        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
+
+@router.post("/{run_id}/review-content", response_model=PipelineStatus)
+def review_content(run_id: str, feedback: ContentFeedback):
+    """
+    Review content — approve all or request revision on specific pieces.
+    If approved, runs Phase 4 (reviewer).
+    If revision requested, re-runs content generation with feedback.
+    """
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Apply inline edits
+    for pf in feedback.piece_feedbacks:
+        if pf.edited_body:
+            runner.update_content_piece(pf.piece_index, pf.edited_body)
+
+    if not feedback.approved:
+        feedback_text = _compile_content_feedback(feedback)
+        state = runner.phase_3_content(feedback=feedback_text)
+
+        return PipelineStatus(
+            run_id=run_id,
+            phase="content_review",
+            content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            revision_count=state.get("revision_count", 0),
+            cost_estimate=state["trace"].total_cost_estimate,
+        )
+
+    # Approved — run automated review
+    state = runner.phase_4_review()
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="final_review",
+        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
+
+@router.post("/{run_id}/approve-final", response_model=PipelineStatus)
+def approve_final(run_id: str):
+    """
+    Final approval — format and save output.
+    """
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    state = runner.phase_5_export()
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="completed",
+        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
+
+@router.get("/{run_id}/download/{format}")
+def download_output(run_id: str, format: str):
+    """Download output in specified format (md, json)."""
+    from fastapi.responses import FileResponse
+    from src.config.settings import PROJECT_ROOT
+
+    run_dir = PROJECT_ROOT / "outputs" / run_id
+    if format == "md":
+        path = run_dir / "content.md"
+    elif format == "json":
+        path = run_dir / "content.json"
+    else:
+        raise HTTPException(status_code=400, detail="Format must be 'md' or 'json'")
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Output not found")
+
+    return FileResponse(path, filename=f"campaign-{run_id}.{format}")
+
+
+@router.get("/history")
+def list_campaigns():
+    """List past campaign runs from outputs/ directory."""
+    from src.config.settings import PROJECT_ROOT
+    import json
+
+    outputs_dir = PROJECT_ROOT / "outputs"
+    runs = []
+    if outputs_dir.exists():
+        for run_dir in sorted(outputs_dir.iterdir(), reverse=True):
+            if run_dir.is_dir():
+                trace_path = run_dir / "trace.json"
+                if trace_path.exists():
+                    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+                    runs.append({
+                        "run_id": run_dir.name,
+                        "brief_summary": trace.get("brief_summary", ""),
+                        "status": trace.get("final_status", "unknown"),
+                        "cost": trace.get("total_cost_estimate", 0),
+                        "timestamp": trace.get("started_at", ""),
+                    })
+    return runs
+
+
+def _compile_strategy_feedback(feedback: StrategyFeedback) -> str:
+    parts = []
+    check_labels = {
+        "tone": "Tone chưa phù hợp — cần điều chỉnh",
+        "angle": "Góc tiếp cận chưa đúng",
+        "audience": "Chưa hiểu đúng audience",
+        "hook": "Hook chưa đủ mạnh",
+        "cta": "CTA chưa rõ ràng",
+        "platform": "Platform approach chưa đúng",
+    }
+    for check in feedback.feedback_checks:
+        if check in check_labels:
+            parts.append(check_labels[check])
+    if feedback.comment:
+        parts.append(f"User comment: {feedback.comment}")
+    return "\n".join(f"- {p}" for p in parts)
+
+
+def _compile_content_feedback(feedback: ContentFeedback) -> str:
+    parts = ["User yêu cầu sửa các piece sau:"]
+    for pf in feedback.piece_feedbacks:
+        if not pf.approved:
+            parts.append(f"- Piece #{pf.piece_index}: {pf.comment or 'Cần sửa'}")
+    return "\n".join(parts)
