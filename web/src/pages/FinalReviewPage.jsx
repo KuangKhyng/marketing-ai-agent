@@ -73,17 +73,24 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
         )}
       </div>
 
-      <div className="flex gap-4">
-        <button onClick={handleBack} disabled={loading}
-                className="w-1/3 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 btn-secondary transition-all">
-          <ArrowLeft className="w-5 h-5" />
-          Quay lại sửa Content
-        </button>
-        <button onClick={handleApprove} disabled={loading || !result.overall_passed}
-                className="flex-1 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-primary transition-all disabled:opacity-40">
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-          Approve & Export Campaign
-        </button>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-4">
+          <button onClick={handleBack} disabled={loading}
+                  className="w-1/3 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 btn-secondary transition-all">
+            <ArrowLeft className="w-5 h-5" />
+            Quay lại sửa Content
+          </button>
+          <button onClick={handleApprove} disabled={loading}
+                  className="flex-1 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-primary transition-all disabled:opacity-40">
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+            {result.overall_passed ? 'Approve & Export Campaign' : 'Bỏ qua review & Export'}
+          </button>
+        </div>
+        {!result.overall_passed && (
+          <p className="text-center text-xs opacity-50">
+            💡 Bạn có thể export dù review chưa đạt. Các gợi ý trên chỉ mang tính tham khảo.
+          </p>
+        )}
       </div>
     </div>
   );
