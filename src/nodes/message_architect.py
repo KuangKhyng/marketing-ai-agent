@@ -8,7 +8,6 @@ Message Architect Node
 MasterMessage is PLATFORM-AGNOSTIC — the "skeleton" that Channel Renderer uses.
 Handles revision_instructions from reviewer if in revision loop.
 """
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -16,8 +15,10 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.models.message import MasterMessage
-from src.models.trace import NodeTrace, RunTrace
-from src.config.settings import get_api_key, get_model_config, estimate_cost
+from src.models.trace import NodeTrace
+from src.config.settings import get_api_key, get_model_config
+from src.utils.trace import update_trace
+from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "message_architect.md"
 
@@ -37,6 +38,10 @@ def message_architect_node(state: dict) -> dict:
     Returns:
         Updated state with 'master_message' key.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "message_architect"}
+
     node_trace = NodeTrace(
         node_name="message_architect",
         started_at=datetime.now(),
@@ -54,7 +59,7 @@ def message_architect_node(state: dict) -> dict:
         return {
             "master_message": master_message,
             "current_node": "message_architect",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -70,7 +75,7 @@ def message_architect_node(state: dict) -> dict:
             return {
                 "master_message": master_message,
                 "current_node": "message_architect",
-                "trace": _update_trace(state, node_trace),
+                "trace": update_trace(state, node_trace),
             }
         except Exception as retry_error:
             node_trace.error = f"Message architecture failed after retry: {str(retry_error)}"
@@ -78,7 +83,7 @@ def message_architect_node(state: dict) -> dict:
             return {
                 "error": node_trace.error,
                 "current_node": "message_architect",
-                "trace": _update_trace(state, node_trace),
+                "trace": update_trace(state, node_trace),
             }
 
 
@@ -128,27 +133,23 @@ def _call_claude_for_message(
 
     user_message = "\n\n---\n\n".join(user_parts)
 
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=user_message),
-    ]
+    handler = TokenUsageHandler()
+    result = structured_llm.invoke(
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message),
+        ],
+        config={"callbacks": [handler]},
+    )
 
-    result = structured_llm.invoke(messages)
-
+    # Track token usage
     node_trace.model_used = config["model"]
-    node_trace.token_usage = {"input": 0, "output": 0}
+    if handler.has_data:
+        node_trace.token_usage = handler.get_usage()
+    else:
+        node_trace.token_usage = {
+            "input": estimate_tokens(system_prompt + user_message),
+            "output": estimate_tokens(result.model_dump_json()),
+        }
 
     return result
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    if node_trace.model_used and node_trace.token_usage:
-        cost = estimate_cost(
-            node_trace.model_used,
-            node_trace.token_usage.get("input", 0),
-            node_trace.token_usage.get("output", 0),
-        )
-        trace.total_cost_estimate += cost
-    return trace

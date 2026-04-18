@@ -7,15 +7,16 @@ Strategist Node
 
 Note: After this node, there is a HUMAN APPROVAL gate.
 """
-import json
 from datetime import datetime
 from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.models.trace import NodeTrace, RunTrace
-from src.config.settings import get_api_key, get_model_config, estimate_cost
+from src.models.trace import NodeTrace
+from src.config.settings import get_api_key, get_model_config
+from src.utils.trace import update_trace
+from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "strategist.md"
 
@@ -34,6 +35,10 @@ def strategist_node(state: dict) -> dict:
     Returns:
         Updated state with 'strategy' key.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "strategist"}
+
     node_trace = NodeTrace(
         node_name="strategist",
         started_at=datetime.now(),
@@ -63,18 +68,33 @@ def strategist_node(state: dict) -> dict:
             HumanMessage(content=user_message),
         ]
 
-        response = llm.invoke(messages)
+        handler = TokenUsageHandler()
+        response = llm.invoke(messages, config={"callbacks": [handler]})
         strategy = response.content
 
         node_trace.model_used = config["model"]
         node_trace.output_summary = strategy[:200] + "..." if len(strategy) > 200 else strategy
-        node_trace.token_usage = _extract_token_usage(response)
+
+        # Token usage
+        if handler.has_data:
+            node_trace.token_usage = handler.get_usage()
+        else:
+            # Try from response metadata
+            usage = _extract_token_usage(response)
+            if usage:
+                node_trace.token_usage = usage
+            else:
+                node_trace.token_usage = {
+                    "input": estimate_tokens(system_prompt + user_message),
+                    "output": estimate_tokens(strategy),
+                }
+
         node_trace.finished_at = datetime.now()
 
         return {
             "strategy": strategy,
             "current_node": "strategist",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -83,7 +103,7 @@ def strategist_node(state: dict) -> dict:
         return {
             "error": node_trace.error,
             "current_node": "strategist",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
 
@@ -114,28 +134,18 @@ def _build_user_message(brief, context_pack: dict) -> str:
     return "\n\n---\n\n".join(sections)
 
 
-def _extract_token_usage(response) -> dict[str, int]:
+def _extract_token_usage(response) -> dict[str, int] | None:
     """Extract token usage from LangChain response if available."""
-    usage = {}
     if hasattr(response, "usage_metadata") and response.usage_metadata:
-        usage["input"] = response.usage_metadata.get("input_tokens", 0)
-        usage["output"] = response.usage_metadata.get("output_tokens", 0)
-    elif hasattr(response, "response_metadata"):
+        return {
+            "input": response.usage_metadata.get("input_tokens", 0),
+            "output": response.usage_metadata.get("output_tokens", 0),
+        }
+    if hasattr(response, "response_metadata"):
         meta = response.response_metadata
         if "usage" in meta:
-            usage["input"] = meta["usage"].get("input_tokens", 0)
-            usage["output"] = meta["usage"].get("output_tokens", 0)
-    return usage
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    if node_trace.model_used and node_trace.token_usage:
-        cost = estimate_cost(
-            node_trace.model_used,
-            node_trace.token_usage.get("input", 0),
-            node_trace.token_usage.get("output", 0),
-        )
-        trace.total_cost_estimate += cost
-    return trace
+            return {
+                "input": meta["usage"].get("input_tokens", 0),
+                "output": meta["usage"].get("output_tokens", 0),
+            }
+    return None

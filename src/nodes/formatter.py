@@ -37,6 +37,9 @@ def formatter_node(state: dict) -> dict:
     Returns:
         Updated state with finalized trace.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "formatter"}
     node_trace = NodeTrace(
         node_name="formatter",
         started_at=datetime.now(),

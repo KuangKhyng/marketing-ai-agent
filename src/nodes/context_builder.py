@@ -9,9 +9,9 @@ Assembles context from knowledge base following priority hierarchy.
 """
 from datetime import datetime
 
-from src.models.trace import NodeTrace, RunTrace
+from src.models.trace import NodeTrace
 from src.knowledge.retriever import build_context_pack
-from src.config.settings import estimate_cost
+from src.utils.trace import update_trace
 
 
 def context_builder_node(state: dict) -> dict:
@@ -24,6 +24,10 @@ def context_builder_node(state: dict) -> dict:
     Returns:
         Updated state with 'context_pack' key.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "context_builder"}
+
     node_trace = NodeTrace(
         node_name="context_builder",
         started_at=datetime.now(),
@@ -43,7 +47,7 @@ def context_builder_node(state: dict) -> dict:
         return {
             "context_pack": context_pack,
             "current_node": "context_builder",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -52,12 +56,5 @@ def context_builder_node(state: dict) -> dict:
         return {
             "error": node_trace.error,
             "current_node": "context_builder",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    """Update the run trace with a new node trace."""
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    return trace

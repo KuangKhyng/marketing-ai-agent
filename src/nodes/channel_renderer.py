@@ -16,8 +16,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.models.brief import Channel, Deliverable
 from src.models.content import ContentPiece, CampaignContent
-from src.models.trace import NodeTrace, RunTrace
-from src.config.settings import get_api_key, get_model_config, estimate_cost
+from src.models.trace import NodeTrace
+from src.config.settings import get_api_key, get_model_config
+from src.utils.trace import update_trace
+from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts" / "v1"
 
@@ -50,6 +52,10 @@ def channel_renderer_node(state: dict) -> dict:
     Returns:
         Updated state with 'campaign_content' key.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "channel_renderer"}
+
     node_trace = NodeTrace(
         node_name="channel_renderer",
         started_at=datetime.now(),
@@ -99,7 +105,7 @@ def channel_renderer_node(state: dict) -> dict:
         return {
             "campaign_content": campaign_content,
             "current_node": "channel_renderer",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -108,7 +114,7 @@ def channel_renderer_node(state: dict) -> dict:
         return {
             "error": node_trace.error,
             "current_node": "channel_renderer",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
 
@@ -155,7 +161,8 @@ def _render_single_piece(
             HumanMessage(content=f"Tạo {deliverable.value} cho {channel.value}:\n\n{user_message}"),
         ]
 
-        piece = structured_llm.invoke(messages)
+        handler = TokenUsageHandler()
+        piece = structured_llm.invoke(messages, config={"callbacks": [handler]})
 
         # Ensure channel and deliverable are set correctly
         piece.channel = channel
@@ -167,10 +174,18 @@ def _render_single_piece(
         # Post-processing: deduplicate headline/hook/body
         piece = _dedup_content_fields(piece)
 
-        # Post-processing: normalize hashtags to lowercase
-        piece.hashtags = [h.lower() if h.startswith("#") else f"#{h.lower()}" for h in piece.hashtags]
+        # Post-processing: ensure hashtag prefix
+        piece.hashtags = [h if h.startswith("#") else f"#{h}" for h in piece.hashtags]
 
+        # Token usage tracking
         node_trace.model_used = config["model"]
+        if handler.has_data:
+            node_trace.token_usage = handler.get_usage()
+        else:
+            node_trace.token_usage = {
+                "input": estimate_tokens(system_prompt + user_message),
+                "output": estimate_tokens(piece.model_dump_json()),
+            }
 
         return piece
 
@@ -183,45 +198,32 @@ def _render_single_piece(
 def _dedup_content_fields(piece: ContentPiece) -> ContentPiece:
     """
     Remove duplicate content between headline, hook, and body first line.
-    
-    Common LLM behavior: putting the same text in headline, hook, 
+
+    Common LLM behavior: putting the same text in headline, hook,
     and the first line of body. This function deduplicates.
     """
     body_first_line = piece.body.split("\n")[0].strip() if piece.body else ""
-    
+
     # If headline is the same as hook or body first line, clear it
     if piece.headline and piece.hook:
         if _text_similar(piece.headline, piece.hook):
             piece.headline = None
-    
+
     if piece.headline and body_first_line:
         if _text_similar(piece.headline, body_first_line):
             piece.headline = None
-    
-    # If hook is the same as body first line, clear hook 
+
+    # If hook is the same as body first line, clear hook
     # (body already contains it)
     if piece.hook and body_first_line:
         if _text_similar(piece.hook, body_first_line):
             piece.hook = None
-    
+
     return piece
 
 
 def _text_similar(a: str, b: str) -> bool:
     """Check if two text strings are essentially the same (ignoring minor differences)."""
     def normalize(s):
-        return s.strip().lower().rstrip("?!.…✨💫🌙").strip()
+        return s.strip().rstrip("?!.…").strip()
     return normalize(a) == normalize(b)
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    if node_trace.model_used and node_trace.token_usage:
-        cost = estimate_cost(
-            node_trace.model_used,
-            node_trace.token_usage.get("input", 0),
-            node_trace.token_usage.get("output", 0),
-        )
-        trace.total_cost_estimate += cost
-    return trace

@@ -132,8 +132,8 @@ def _handle_human_approval(workflow, config, strategy: str):
 
     while True:
         choice = Prompt.ask(
-            "[bold yellow]Review strategy[/bold yellow]",
-            choices=["a", "r", "f"],
+            "[bold yellow][A]pprove / [R]eject[/bold yellow]",
+            choices=["a", "r"],
             default="a",
         )
 
@@ -173,6 +173,9 @@ def _handle_human_approval(workflow, config, strategy: str):
                 if event.get("error"):
                     console.print(f"\n[red]❌ Error: {event['error']}[/red]")
 
+            # Show post-workflow summary (Fix #10)
+            _print_run_summary(workflow, config)
+
             break
 
         elif choice == "r":
@@ -189,21 +192,28 @@ def _handle_human_approval(workflow, config, strategy: str):
 
             break
 
-        elif choice == "f":
-            # Feedback
-            feedback = Prompt.ask("[bold]Enter feedback for the strategist[/bold]")
-            console.print(f"\n[yellow]Note: Feedback mode not yet implemented in Phase 1.[/yellow]")
-            console.print(f"[yellow]Your feedback: {feedback}[/yellow]")
-            console.print(f"[yellow]Treating as rejection. Please re-run with modified input.[/yellow]\n")
 
-            for event in workflow.stream(
-                Command(resume={"approved": False}),
-                config=config,
-                stream_mode="values",
-            ):
-                pass
+def _print_run_summary(workflow, config):
+    """Print post-workflow summary with revision info, cost, and any errors."""
+    try:
+        final_state = workflow.get_state(config)
+        state_values = final_state.values
 
-            break
+        revision_count = state_values.get("revision_count", 0)
+        if revision_count > 0:
+            console.print(f"\n[yellow]⚠️ Content was revised {revision_count} time(s) before passing review.[/yellow]")
+
+        trace = state_values.get("trace")
+        if trace:
+            console.print(f"[dim]Total nodes executed: {len(trace.node_traces)}[/dim]")
+            console.print(f"[dim]Estimated cost: ${trace.total_cost_estimate:.4f}[/dim]")
+            errors = [nt for nt in trace.node_traces if nt.error]
+            if errors:
+                console.print(f"[yellow]⚠️ {len(errors)} node(s) had warnings/errors:[/yellow]")
+                for nt in errors:
+                    console.print(f"[yellow]  - {nt.node_name}: {nt.error[:80]}[/yellow]")
+    except Exception:
+        pass  # Don't let summary printing crash the CLI
 
 
 def main():

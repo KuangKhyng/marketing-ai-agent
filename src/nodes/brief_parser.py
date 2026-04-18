@@ -7,7 +7,6 @@ Brief Parser Node
 
 Uses Claude API with tool_use / structured output to force correct CampaignBrief schema.
 """
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -16,7 +15,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.models.brief import CampaignBrief
 from src.models.trace import NodeTrace
-from src.config.settings import get_api_key, get_model_config, estimate_cost
+from src.config.settings import get_api_key, get_model_config
+from src.utils.trace import update_trace
+from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 
 
 # Load prompt template
@@ -26,15 +27,6 @@ PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "brief
 def _load_prompt() -> str:
     """Load the brief parser prompt template."""
     return PROMPT_PATH.read_text(encoding="utf-8")
-
-
-def _get_brief_tool_schema() -> dict:
-    """Generate the tool schema from CampaignBrief Pydantic model."""
-    return {
-        "name": "create_campaign_brief",
-        "description": "Create a structured campaign brief from natural language input. Extract all information and fill in reasonable defaults for missing fields.",
-        "input_schema": CampaignBrief.model_json_schema(),
-    }
 
 
 def brief_parser_node(state: dict) -> dict:
@@ -60,7 +52,7 @@ def brief_parser_node(state: dict) -> dict:
         return {
             "error": node_trace.error,
             "current_node": "brief_parser",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     try:
@@ -71,7 +63,7 @@ def brief_parser_node(state: dict) -> dict:
         return {
             "brief": brief,
             "current_node": "brief_parser",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -87,7 +79,7 @@ def brief_parser_node(state: dict) -> dict:
             return {
                 "brief": brief,
                 "current_node": "brief_parser",
-                "trace": _update_trace(state, node_trace),
+                "trace": update_trace(state, node_trace),
             }
         except Exception as retry_error:
             node_trace.error = f"Brief parsing failed after retry: {str(retry_error)}"
@@ -95,7 +87,7 @@ def brief_parser_node(state: dict) -> dict:
             return {
                 "error": node_trace.error,
                 "current_node": "brief_parser",
-                "trace": _update_trace(state, node_trace),
+                "trace": update_trace(state, node_trace),
             }
 
 
@@ -125,25 +117,20 @@ def _call_claude_for_brief(
         HumanMessage(content=f"Phân tích input sau thành CampaignBrief:\n\n{raw_input}"),
     ]
 
-    result = structured_llm.invoke(messages)
+    handler = TokenUsageHandler()
+    result = structured_llm.invoke(messages, config={"callbacks": [handler]})
 
-    # Track token usage (approximate — structured output doesn't always expose usage)
+    # Track token usage
     node_trace.model_used = config["model"]
-    node_trace.token_usage = {"input": 0, "output": 0}  # Will be filled by callback if available
+    if handler.has_data:
+        node_trace.token_usage = handler.get_usage()
+    else:
+        # Fallback: estimate from content length
+        input_text = system_prompt + raw_input
+        output_text = result.model_dump_json()
+        node_trace.token_usage = {
+            "input": estimate_tokens(input_text),
+            "output": estimate_tokens(output_text),
+        }
 
     return result
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    """Update the run trace with a new node trace."""
-    from src.models.trace import RunTrace
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    if node_trace.model_used and node_trace.token_usage:
-        cost = estimate_cost(
-            node_trace.model_used,
-            node_trace.token_usage.get("input", 0),
-            node_trace.token_usage.get("output", 0),
-        )
-        trace.total_cost_estimate += cost
-    return trace

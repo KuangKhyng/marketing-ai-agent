@@ -19,8 +19,10 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.models.review import ReviewResult, ReviewDimension, DimensionScore
-from src.models.trace import NodeTrace, RunTrace
-from src.config.settings import get_api_key, get_model_config, get_platform_specs, estimate_cost
+from src.models.trace import NodeTrace
+from src.config.settings import get_api_key, get_model_config, get_platform_specs
+from src.utils.trace import update_trace
+from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "reviewer.md"
 
@@ -50,6 +52,10 @@ def reviewer_node(state: dict) -> dict:
     Returns:
         Updated state with 'review_result' and updated 'revision_count'.
     """
+    # Early exit if previous node errored
+    if state.get("error"):
+        return {"current_node": "reviewer"}
+
     node_trace = NodeTrace(
         node_name="reviewer",
         started_at=datetime.now(),
@@ -87,7 +93,7 @@ def reviewer_node(state: dict) -> dict:
             "review_result": review_result,
             "revision_count": revision_count,
             "current_node": "reviewer",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
     except Exception as e:
@@ -112,7 +118,7 @@ def reviewer_node(state: dict) -> dict:
         return {
             "review_result": fallback_review,
             "current_node": "reviewer",
-            "trace": _update_trace(state, node_trace),
+            "trace": update_trace(state, node_trace),
         }
 
 
@@ -122,7 +128,8 @@ def _run_rule_checks(content, brief, context_pack) -> list[str]:
     - Word count within constraints
     - Required terms present
     - Forbidden terms absent
-    - Hashtag count
+    - Hashtag format
+    - Content duplication
     - Channel format specs
     """
     issues = []
@@ -168,7 +175,7 @@ def _run_rule_checks(content, brief, context_pack) -> list[str]:
         # Hashtag format check: all must be lowercase
         for hashtag in piece.hashtags:
             if hashtag != hashtag.lower():
-                issues.append(f"{piece_label} Hashtag not lowercase: '{hashtag}' → should be '{hashtag.lower()}'")
+                issues.append(f"{piece_label} Hashtag not lowercase: '{hashtag}'")
 
         # Content duplication check: headline/hook/body first line
         body_first_line = piece.body.split("\n")[0].strip() if piece.body else ""
@@ -228,8 +235,17 @@ def _run_llm_review(content, brief, context_pack, master_message, config, node_t
         HumanMessage(content=f"Đánh giá content theo 4 dimensions:\n\n{user_message}"),
     ]
 
-    result = structured_llm.invoke(messages)
+    handler = TokenUsageHandler()
+    result = structured_llm.invoke(messages, config={"callbacks": [handler]})
+
     node_trace.model_used = config["model"]
+    if handler.has_data:
+        node_trace.token_usage = handler.get_usage()
+    else:
+        node_trace.token_usage = {
+            "input": estimate_tokens(system_prompt + user_message),
+            "output": estimate_tokens(result.model_dump_json()),
+        }
 
     return result
 
@@ -253,14 +269,26 @@ def _combine_results(rule_issues: list[str], llm_review: ReviewResult) -> Review
 
     # If there are rule-based issues, reduce relevant dimension scores
     if rule_issues:
-        # Rule issues affect factuality and brand fit scores
         for i, ds in enumerate(dimension_scores):
+            # Forbidden claims/terms → factuality penalty
             if ds.dimension == ReviewDimension.FACTUALITY and any("forbidden" in issue.lower() for issue in rule_issues):
                 dimension_scores[i] = DimensionScore(
                     dimension=ds.dimension,
                     score=min(ds.score, 0.5),
                     passed=False,
                     feedback=ds.feedback + " | Rule violations found.",
+                )
+            # Hashtag/duplication → channel_fit penalty
+            if ds.dimension == ReviewDimension.CHANNEL_FIT and any(
+                ("hashtag" in issue.lower() or "duplicate" in issue.lower()) for issue in rule_issues
+            ):
+                penalty = 0.1 * len([i for i in rule_issues if "hashtag" in i.lower() or "duplicate" in i.lower()])
+                new_score = max(ds.score - penalty, 0.0)
+                dimension_scores[i] = DimensionScore(
+                    dimension=ds.dimension,
+                    score=new_score,
+                    passed=new_score >= THRESHOLDS[ReviewDimension.CHANNEL_FIT],
+                    feedback=ds.feedback + f" | Rule penalty: -{penalty:.1f} for formatting issues.",
                 )
 
     overall_passed = all(ds.passed for ds in dimension_scores)
@@ -284,16 +312,3 @@ def _combine_results(rule_issues: list[str], llm_review: ReviewResult) -> Review
         suggestions=llm_review.suggestions,
         revision_instructions=revision_instructions or llm_review.revision_instructions,
     )
-
-
-def _update_trace(state: dict, node_trace: NodeTrace):
-    trace = state.get("trace") or RunTrace()
-    trace.node_traces.append(node_trace)
-    if node_trace.model_used and node_trace.token_usage:
-        cost = estimate_cost(
-            node_trace.model_used,
-            node_trace.token_usage.get("input", 0),
-            node_trace.token_usage.get("output", 0),
-        )
-        trace.total_cost_estimate += cost
-    return trace

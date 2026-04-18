@@ -1,9 +1,12 @@
 """Test script — isolated node testing."""
 import sys
 import os
+from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
-os.chdir(r"d:\ai-agent-mkt")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+os.chdir(Path(__file__).resolve().parent)
 
 from src.models.trace import RunTrace
 
