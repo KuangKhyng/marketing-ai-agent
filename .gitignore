@@ -27,3 +27,13 @@ web/package-lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Prompt/spec docs (internal planning)
+knowledge-management-ui.md
+marketing-agent-deploy-railway.md
+marketing-agent-enhanced-review-prompt.md
+marketing-agent-implementation-prompt.md
+marketing-agent-react-fastapi-prompt*.md
+marketing-agent-web-ui-prompt.md
+upgrade-chatbot.md
+multi-brand-knowledge.md
