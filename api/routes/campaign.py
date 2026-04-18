@@ -146,6 +146,63 @@ def review_content(run_id: str, feedback: ContentFeedback):
     )
 
 
+@router.post("/{run_id}/quick-action")
+def quick_action(run_id: str, action: dict):
+    """
+    Quick action on a single content piece.
+    Actions: rewrite, change_hook, change_tone, shorter, longer
+    """
+    from langchain_anthropic import ChatAnthropic
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    piece_index = action.get("piece_index", 0)
+    action_type = action.get("action", "rewrite")
+    pieces = runner.state["campaign_content"].pieces
+
+    if piece_index >= len(pieces):
+        raise HTTPException(status_code=400, detail="Invalid piece index")
+
+    piece = pieces[piece_index]
+    original = piece.body
+
+    action_prompts = {
+        "rewrite": f"Viết lại hoàn toàn bài sau, giữ nguyên ý chính nhưng thay đổi cách diễn đạt:\n\n{original}",
+        "change_hook": f"Giữ nguyên nội dung chính, chỉ viết lại câu mở đầu (hook) cho hấp dẫn hơn:\n\n{original}",
+        "change_tone": f"Viết lại bài sau với tone casual, gần gũi hơn, như đang nói chuyện với bạn bè:\n\n{original}",
+        "shorter": f"Rút gọn bài sau xuống còn 60-70% độ dài hiện tại, giữ ý chính:\n\n{original}",
+        "longer": f"Mở rộng bài sau thêm 30-40% độ dài, thêm chi tiết và ví dụ:\n\n{original}",
+    }
+
+    prompt = action_prompts.get(action_type, action_prompts["rewrite"])
+
+    from src.config.settings import get_api_key
+    llm = ChatAnthropic(
+        model="claude-haiku-4-5-20251001",
+        temperature=0.7,
+        max_tokens=2000,
+        api_key=get_api_key(),
+    )
+
+    result = llm.invoke([
+        SystemMessage(content=f"Bạn là copywriter. Channel: {piece.channel.value}. Deliverable: {piece.deliverable.value}. Chỉ trả về nội dung mới, không giải thích."),
+        HumanMessage(content=prompt),
+    ])
+
+    new_body = result.content.strip()
+    piece.body = new_body
+    piece.word_count = len(new_body.split())
+
+    return {
+        "piece_index": piece_index,
+        "new_body": new_body,
+        "word_count": piece.word_count,
+        "action": action_type,
+    }
+
 @router.post("/{run_id}/approve-final", response_model=PipelineStatus)
 def approve_final(run_id: str):
     """

@@ -15,6 +15,7 @@ export const campaignAPI = {
   reviewStrategy: (runId, feedback) => api.post(`/campaigns/${runId}/review-strategy`, feedback),
   reviewContent: (runId, feedback) => api.post(`/campaigns/${runId}/review-content`, feedback),
   approveFinal: (runId) => api.post(`/campaigns/${runId}/approve-final`),
+  quickAction: (runId, action) => api.post(`/campaigns/${runId}/quick-action`, action),
   download: (runId, format) => api.get(`/campaigns/${runId}/download/${format}`, { responseType: 'blob' }),
   history: () => api.get('/campaigns/history'),
 };

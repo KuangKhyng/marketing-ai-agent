@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, RotateCcw, Loader2 } from 'lucide-react';
+import { Check, RotateCcw, Loader2, Wand2, Scissors, MessageCircle, Sparkles } from 'lucide-react';
+
+const QUICK_ACTIONS = [
+  { id: 'rewrite', label: '🔄 Viết lại', icon: RotateCcw, color: 'purple' },
+  { id: 'change_hook', label: '🎣 Đổi hook', icon: Sparkles, color: 'yellow' },
+  { id: 'shorter', label: '✂️ Ngắn hơn', icon: Scissors, color: 'blue' },
+  { id: 'change_tone', label: '🎭 Đổi tone', icon: MessageCircle, color: 'pink' },
+];
 
 export default function ContentReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const pieces = campaignData?.content?.pieces || [];
@@ -8,6 +15,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
   const [editMode, setEditMode] = useState({});
   const [edits, setEdits] = useState({});
   const [feedback, setFeedback] = useState({});
+  const [quickLoading, setQuickLoading] = useState(null); // action id or null
 
   const handleApprove = async () => {
     setLoading(true);
@@ -58,6 +66,35 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
     }
   };
 
+  const handleQuickAction = async (actionId) => {
+    setQuickLoading(actionId);
+    try {
+      const { data } = await campaignAPI.quickAction(campaignData.run_id, {
+        piece_index: activeTab,
+        action: actionId,
+      });
+      // Update the piece body in local state
+      const updatedPieces = [...pieces];
+      updatedPieces[activeTab] = {
+        ...updatedPieces[activeTab],
+        body: data.new_body,
+        word_count: data.word_count,
+      };
+      setCampaignData({
+        ...campaignData,
+        content: { ...campaignData.content, pieces: updatedPieces },
+      });
+      // Clear any manual edits for this tab
+      const newEdits = { ...edits };
+      delete newEdits[activeTab];
+      setEdits(newEdits);
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setQuickLoading(null);
+    }
+  };
+
   const activePiece = pieces[activeTab];
   const needsChangeCount = Object.values(feedback).filter(f => f.needsChange).length;
 
@@ -66,7 +103,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       <div className="mb-8">
         <h2 className="text-4xl font-bold mb-3 tracking-tight">Content Review</h2>
         <p className="text-lg opacity-70">
-          Review từng piece content. Chỉnh sửa trực tiếp hoặc yêu cầu AI sửa.
+          Review từng piece content. Dùng Quick Actions hoặc chỉnh sửa trực tiếp.
         </p>
       </div>
 
@@ -93,7 +130,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
 
       {/* Active piece content */}
       {activePiece && (
-        <div key={activeTab} className="glass-panel p-8 rounded-2xl mb-8 animate-in fade-in duration-500">
+        <div key={activeTab} className="glass-panel p-8 rounded-2xl mb-4 animate-in fade-in duration-500">
           {/* Hook */}
           {activePiece.hook && (
             <div className="mb-6">
@@ -153,6 +190,27 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
         </div>
       )}
 
+      {/* Quick Actions bar */}
+      <div className="glass-panel p-4 rounded-2xl mb-6 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold tracking-wider text-gray-400 mr-2">⚡ QUICK ACTIONS:</span>
+        {QUICK_ACTIONS.map(action => (
+          <button 
+            key={action.id}
+            onClick={() => handleQuickAction(action.id)}
+            disabled={quickLoading !== null || loading}
+            className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all cursor-pointer border border-white/10 hover:border-purple-500/40 hover:bg-purple-500/10 disabled:opacity-40 disabled:cursor-not-allowed ${
+              quickLoading === action.id ? 'bg-purple-500/20 border-purple-500/40' : 'bg-white/5'
+            }`}>
+            {quickLoading === action.id ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <span>{action.label.split(' ')[0]}</span>
+            )}
+            {quickLoading === action.id ? 'Đang xử lý...' : action.label.split(' ').slice(1).join(' ')}
+          </button>
+        ))}
+      </div>
+
       {/* Per-piece feedback */}
       <div className="glass-panel p-6 rounded-2xl mb-8">
         <label className="flex items-center gap-3 cursor-pointer group">
@@ -163,7 +221,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
                    [activeTab]: { ...feedback[activeTab], needsChange: e.target.checked }
                  })}
                  className="w-5 h-5 rounded text-red-500 focus:ring-red-500 bg-[#0f0f1a] border-gray-600 transition-all cursor-pointer" />
-          <span className="text-base font-semibold group-hover:text-red-400 transition-colors">🔄 Piece này cần AI sinh lại</span>
+          <span className="text-base font-semibold group-hover:text-red-400 transition-colors">🔄 Piece này cần AI sinh lại (full pipeline)</span>
         </label>
 
         {feedback[activeTab]?.needsChange && (
