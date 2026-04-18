@@ -75,8 +75,8 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
                       className="w-full p-4 rounded-xl text-sm glass-input text-white [&>option]:bg-[#1a1a2e]">
                 <option value="awareness">Awareness (Nhận diện)</option>
                 <option value="engagement">Engagement (Tương tác)</option>
-                <option value="lead_generation">Lead Gen</option>
-                <option value="conversion">Conversion</option>
+                <option value="lead_generation">Lead Generation (Khách hàng tiềm năng)</option>
+                <option value="conversion">Conversion (Chuyển đổi mua hàng)</option>
               </select>
             </div>
 
