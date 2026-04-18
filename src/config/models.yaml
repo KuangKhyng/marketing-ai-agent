@@ -1,0 +1,28 @@
+nodes:
+  brief_parser:
+    model: "claude-haiku-4-5-20251001"
+    temperature: 0.1          # low — parsing, deterministic
+    max_tokens: 2000
+
+  context_builder:
+    model: null                # no LLM call — pure data loading
+
+  strategist:
+    model: "claude-sonnet-4-6"
+    temperature: 0.7           # moderate — creative but controlled
+    max_tokens: 3000
+
+  message_architect:
+    model: "claude-sonnet-4-6"
+    temperature: 0.6
+    max_tokens: 2000
+
+  channel_renderer:
+    model: "claude-sonnet-4-6"
+    temperature: 0.7           # creative
+    max_tokens: 3000
+
+  reviewer:
+    model: "claude-haiku-4-5-20251001"
+    temperature: 0.1           # strict — evaluation
+    max_tokens: 2000

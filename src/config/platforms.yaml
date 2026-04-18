@@ -1,0 +1,40 @@
+facebook:
+  post:
+    min_words: 100
+    max_words: 400
+    optimal_words: 200
+    hashtag_count: "3-5"
+    format: "narrative"
+    hook_position: "first 2 lines (before See More)"
+    emoji: "moderate"
+    cta_style: "soft invite"
+    media: "1 image or video recommended"
+
+instagram:
+  carousel:
+    slides: "5-7"
+    words_per_slide: "20-40"
+    caption_words: "100-150"
+    hashtag_count: "15-25"
+    first_slide: "hook — question or stat"
+    last_slide: "CTA + save prompt"
+    format: "visual-first, text overlay"
+
+  reels_script:
+    duration: "15-30 seconds"
+    hook_duration: "3 seconds"
+    format: "vertical 9:16"
+    caption_words: "50-100"
+    hashtag_count: "10-15"
+    hook_style: "pattern interrupt, curiosity gap"
+
+tiktok:
+  short_video_script:
+    duration: "15-60 seconds"
+    hook_duration: "3 seconds"
+    format: "vertical 9:16"
+    tone: "casual, conversational"
+    hashtag_count: "3-5"
+    text_overlays: true
+    pace: "fast, change every 5-10s"
+    trending_formats: ["storytime", "POV", "things I wish I knew", "unpopular opinion"]
