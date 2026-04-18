@@ -1,4 +1,4 @@
-# ✦ Công chúa Trang — Marketing Campaign Engine
+# ✦ Marketing Campaign Engine
 
 Multi-brand marketing operating system, powered by LangGraph + Anthropic Claude API.
 
