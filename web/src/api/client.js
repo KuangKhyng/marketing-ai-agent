@@ -6,7 +6,7 @@ const baseURL = import.meta.env.DEV
 
 const api = axios.create({
   baseURL,
-  timeout: 120000, // 2 min — LLM calls can be slow
+  timeout: 300000, // 5 min — LLM calls can be very slow on free tier
 });
 
 export const campaignAPI = {
