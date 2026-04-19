@@ -1,7 +1,9 @@
 import { campaignAPI } from '../api/client';
 import { Loader2, ArrowLeft, Download, ShieldCheck } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 export default function FinalReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
+  const { showToast, Toast } = useToast();
   const result = campaignData?.review_result;
 
   const handleApprove = async () => {
@@ -11,7 +13,7 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
       setCampaignData(data);
       setPhase('export');
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.detail || err.message));
+      showToast('Error: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -46,7 +48,7 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
               {s.dimension.replace('_', ' ').toUpperCase()}
             </p>
             <div className="flex items-end gap-2 mb-3">
-               <p className="text-4xl font-black">{s.score.toFixed(1)}</p>
+               <p className="text-4xl font-black">{(s.score * 10).toFixed(1)}</p>
                <span className="text-lg opacity-50 font-bold mb-1">/10</span>
             </div>
             
@@ -92,6 +94,7 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
           </p>
         )}
       </div>
+      <Toast />
     </div>
   );
 }

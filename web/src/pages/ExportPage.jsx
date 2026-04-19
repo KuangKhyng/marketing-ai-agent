@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
 import { Download, FileText, Code2, Sparkles, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 function formatPieceForCopy(piece) {
   const parts = [];
@@ -54,6 +55,7 @@ const CHANNEL_ICONS = {
 };
 
 export default function ExportPage({ campaignData, setPhase }) {
+  const { showToast, Toast } = useToast();
   const [downloading, setDownloading] = useState(false);
   const [expandedPiece, setExpandedPiece] = useState(null);
 
@@ -73,7 +75,7 @@ export default function ExportPage({ campaignData, setPhase }) {
       link.click();
       link.parentNode.removeChild(link);
     } catch (err) {
-      alert("Error downloading file.");
+      showToast('Lỗi khi tải file. Vui lòng thử lại.');
     } finally {
       setDownloading(false);
     }
@@ -164,6 +166,7 @@ export default function ExportPage({ campaignData, setPhase }) {
               className="mt-16 text-sm font-semibold opacity-60 hover:opacity-100 transition-opacity border-b border-transparent hover:border-white pb-1 relative z-10 cursor-pointer">
         + Bắt đầu Campaign mới
       </button>
+      <Toast />
     </div>
   );
 }

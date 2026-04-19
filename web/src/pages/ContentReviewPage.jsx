@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, RotateCcw, Loader2, Wand2, Scissors, MessageCircle, Sparkles } from 'lucide-react';
+import { Check, RotateCcw, Loader2, Wand2, Scissors, MessageCircle, Sparkles, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 function formatForPlatform(piece) {
   let text = '';
@@ -280,6 +281,11 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
 
       {/* Action buttons */}
       <div className="flex gap-4">
+        <button onClick={() => setPhase('strategy_review')} disabled={loading}
+                className="px-6 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
+          <ArrowLeft className="w-5 h-5" />
+          Strategy
+        </button>
         {needsChangeCount > 0 ? (
           <button onClick={handleRevise} disabled={loading}
                   className="w-full py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
@@ -294,6 +300,11 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
           </button>
         )}
       </div>
+      <LoadingOverlay
+        show={loading}
+        title="Đang xử lý content..."
+        description="AI đang review hoặc tái tạo lại nội dung cho bạn."
+      />
       <Toast />
     </div>
   );

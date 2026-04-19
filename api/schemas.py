@@ -23,9 +23,15 @@ class CampaignInput(BaseModel):
     key_message: Optional[str] = None
     cta: Optional[str] = None
 
+    # Language preference
+    language: str = "vi"  # "vi" | "en"
+
     def to_raw_input(self) -> str:
         if self.mode == "free_text" and self.raw_input:
-            return self.raw_input
+            raw = self.raw_input
+            if self.language == "en":
+                raw += "\n\n[LANGUAGE INSTRUCTION: Generate ALL content in English. Do NOT use Vietnamese.]"
+            return raw
         parts = []
         if self.goal: parts.append(f"Tạo campaign {self.goal}")
         if self.product: parts.append(f"cho {self.product}")
@@ -33,7 +39,10 @@ class CampaignInput(BaseModel):
         if self.channels: parts.append(f"Channels: {', '.join(self.channels)}")
         if self.key_message: parts.append(f"Key message: {self.key_message}")
         if self.cta: parts.append(f"CTA: {self.cta}")
-        return ". ".join(parts)
+        raw = ". ".join(parts)
+        if self.language == "en":
+            raw += "\n\n[LANGUAGE INSTRUCTION: Generate ALL content in English. Do NOT use Vietnamese.]"
+        return raw
 
 
 class BriefEdit(BaseModel):

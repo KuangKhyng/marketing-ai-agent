@@ -89,18 +89,43 @@ def channel_renderer_node(state: dict) -> dict:
 
         def render_one(args):
             ch, deliv = args
-            return _render_single_piece(
+            # Each thread gets its own trace to avoid race conditions
+            thread_trace = NodeTrace(
+                node_name=f"channel_renderer_{ch.value}_{deliv.value}",
+                started_at=datetime.now(),
+            )
+            piece = _render_single_piece(
                 channel=ch, deliverable=deliv,
                 brief=brief, master_message=master_message,
-                context_pack=context_pack, config=config, node_trace=node_trace,
+                context_pack=context_pack, config=config, node_trace=thread_trace,
             )
+            return piece, thread_trace
+
+        total_tokens = {"input": 0, "output": 0}
+        errors = []
 
         with ThreadPoolExecutor(max_workers=len(render_tasks)) as executor:
             futures = {executor.submit(render_one, task): task for task in render_tasks}
             for future in as_completed(futures):
-                piece = future.result()
+                piece, thread_trace = future.result()
                 if piece:
                     all_pieces.append(piece)
+                # Aggregate token usage from each thread safely
+                if thread_trace.token_usage:
+                    total_tokens["input"] += thread_trace.token_usage.get("input", 0)
+                    total_tokens["output"] += thread_trace.token_usage.get("output", 0)
+                if thread_trace.error:
+                    errors.append(thread_trace.error)
+                if thread_trace.model_used:
+                    node_trace.model_used = thread_trace.model_used
+
+        # Sort pieces by channel order (facebook → instagram → tiktok)
+        channel_order = {Channel.FACEBOOK: 0, Channel.INSTAGRAM: 1, Channel.TIKTOK: 2}
+        all_pieces.sort(key=lambda p: (channel_order.get(p.channel, 99), p.deliverable.value))
+
+        node_trace.token_usage = total_tokens
+        if errors:
+            node_trace.error = "\n".join(errors)
 
         campaign_content = CampaignContent(
             pieces=all_pieces,

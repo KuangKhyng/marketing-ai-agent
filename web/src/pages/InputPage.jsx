@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { campaignAPI, brandsAPI } from '../api/client';
-import { Loader2, Sparkles, Wand2 } from 'lucide-react';
+import { campaignAPI, brandsAPI, templatesAPI } from '../api/client';
+import { Loader2, Sparkles, Wand2, BookmarkPlus, FolderOpen } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
 export default function InputPage({ setCampaignData, setPhase, loading, setLoading }) {
@@ -11,6 +11,9 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
   const [freeText, setFreeText] = useState('');
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
+  const [language, setLanguage] = useState('vi');
+  const [templates, setTemplates] = useState([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [form, setForm] = useState({
     goal: 'awareness',
     product: '',
@@ -22,14 +25,73 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
 
   useEffect(() => {
     brandsAPI.list().then(res => setBrands(res.data)).catch(() => {});
+    templatesAPI.list().then(res => setTemplates(res.data)).catch(() => {});
   }, []);
 
+  const handleLoadTemplate = async (templateId) => {
+    try {
+      const { data } = await templatesAPI.get(templateId);
+      const brief = data.brief || {};
+      setMode('structured');
+      setForm({
+        goal: brief.goal || 'awareness',
+        product: brief.offer?.product_or_service || '',
+        audience: brief.audience?.persona_description || '',
+        channels: brief.channels || ['facebook', 'instagram'],
+        key_message: brief.offer?.key_message || '',
+        cta: brief.offer?.cta || '',
+      });
+      if (brief.brand?.voice_profile_id && brief.brand.voice_profile_id !== 'default') {
+        setSelectedBrand(brief.brand.voice_profile_id);
+      }
+      setShowTemplates(false);
+      showToast(`Đã load template: ${data.name}`, 'success');
+    } catch {
+      showToast('Lỗi khi load template.');
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    const name = prompt('Tên template:');
+    if (!name) return;
+    try {
+      await templatesAPI.create({
+        name,
+        description: `${form.goal} - ${form.product}`,
+        brief: {
+          goal: form.goal,
+          brand: { name: '', voice_profile_id: selectedBrand || 'default' },
+          audience: { persona_description: form.audience },
+          offer: { product_or_service: form.product, key_message: form.key_message, cta: form.cta },
+          channels: form.channels,
+        },
+      });
+      const { data } = await templatesAPI.list();
+      setTemplates(data);
+      showToast(`Đã lưu template "${name}"!`, 'success');
+    } catch {
+      showToast('Lỗi khi lưu template.');
+    }
+  };
+
   const handleSubmit = async () => {
+    // Validate structured mode
+    if (mode === 'structured') {
+      if (!form.product.trim() && !form.key_message.trim()) {
+        showToast('Vui lòng nhập ít nhất Sản phẩm hoặc Thông điệp cốt lõi.');
+        return;
+      }
+      if (form.channels.length === 0) {
+        showToast('Vui lòng chọn ít nhất 1 mạng xã hội.');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const input = mode === 'free_text'
-        ? { mode: 'free_text', raw_input: freeText, brand_id: selectedBrand }
-        : { mode: 'structured', ...form, brand_id: selectedBrand };
+        ? { mode: 'free_text', raw_input: freeText, brand_id: selectedBrand, language }
+        : { mode: 'structured', ...form, brand_id: selectedBrand, language };
 
       const { data } = await campaignAPI.start(input);
       setCampaignData(data);
@@ -51,6 +113,32 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
       </div>
 
       <div className="glass-panel p-5 md:p-8 rounded-2xl w-full max-w-full overflow-hidden">
+        {/* Template Selector */}
+        {templates.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium opacity-80 flex items-center gap-1">
+                <FolderOpen className="w-3 h-3" /> Templates
+              </label>
+              <button onClick={() => setShowTemplates(!showTemplates)}
+                      className="text-xs text-purple-400 hover:text-purple-300 cursor-pointer">
+                {showTemplates ? 'Hide' : `${templates.length} saved`}
+              </button>
+            </div>
+            {showTemplates && (
+              <div className="flex gap-2 flex-wrap animate-in fade-in duration-300">
+                {templates.map(t => (
+                  <button key={t.id} onClick={() => handleLoadTemplate(t.id)}
+                          className="px-4 py-2.5 rounded-xl text-sm font-medium bg-[#252540]/60 text-gray-300 border border-white/5 hover:border-purple-500/50 hover:bg-purple-500/10 transition-all cursor-pointer flex items-center gap-2">
+                    📌 {t.name}
+                    <span className="text-xs opacity-40">{t.brief_summary}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Brand Selector */}
         {brands.length > 0 && (
           <div className="mb-6">
@@ -85,6 +173,23 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
           </div>
         )}
 
+        {/* Language selector */}
+        <div className="mb-6">
+          <label className="text-xs font-medium mb-2 block opacity-80">Ngôn ngữ Content</label>
+          <div className="flex gap-2">
+            {[{id: 'vi', label: '🇻🇳 Tiếng Việt'}, {id: 'en', label: '🇺🇸 English'}].map(lang => (
+              <button key={lang.id} onClick={() => setLanguage(lang.id)}
+                      className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all cursor-pointer ${
+                        language === lang.id
+                          ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
+                          : 'bg-[#252540]/60 text-gray-400 border border-white/5 hover:border-purple-500/50'
+                      }`}>
+                {lang.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Mode toggle */}
         <div className="flex flex-col md:flex-row gap-2 mb-6 md:mb-8 bg-[#1a1a2e]/50 p-1.5 rounded-xl border border-white/5 md:inline-flex backdrop-blur-md w-full md:w-auto">
           {['free_text', 'structured'].map(m => (
@@ -105,7 +210,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
               <Wand2 className="w-4 h-4 text-purple-400 shrink-0" /> Nhập Prompt
             </label>
             <textarea value={freeText} onChange={e => setFreeText(e.target.value)}
-                      placeholder="Ví dụ: Tạo campaign awareness cho dịch vụ tử vi online, target Gen Z quan tâm tâm linh..."
+                      placeholder="Ví dụ: Tạo campaign awareness cho dịch vụ học tiếng Anh online, target Gen Z yêu thích phát triển bản thân..."
                       rows={6}
                       className="w-full p-4 md:p-5 rounded-xl text-sm md:text-base glass-input resize-y placeholder:opacity-40"
             />
@@ -148,31 +253,41 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
 
             <InputField label="Sản phẩm / Dịch vụ" value={form.product}
                         onChange={v => setForm({...form, product: v})}
-                        placeholder="VD: Dịch vụ xem lá số tử vi online" />
+                        placeholder="VD: Ứng dụng học tiếng Anh giao tiếp" />
 
             <InputField label="Thông điệp cốt lõi" value={form.key_message}
                         onChange={v => setForm({...form, key_message: v})}
-                        placeholder="VD: Khám phá bản thân qua các vì sao" />
+                        placeholder="VD: Nói tiếng Anh tự tin trong 90 ngày" />
 
             <InputField label="Audience (Đối tượng)" value={form.audience}
                         onChange={v => setForm({...form, audience: v})}
-                        placeholder="VD: Gen Z, 18-25 tuổi, thích tarot..." />
+                        placeholder="VD: Gen Z, 18-25 tuổi, muốn cải thiện ngoại ngữ..." />
 
             <InputField label="Call to Action (CTA)" value={form.cta}
                         onChange={v => setForm({...form, cta: v})}
-                        placeholder="VD: Inbox ngay để đặt lịch" />
+                        placeholder="VD: Đăng ký học thử miễn phí" />
           </div>
         )}
 
         {/* Generate button */}
-        <button onClick={handleSubmit} disabled={loading || (mode==='free_text' && !freeText)}
-                className="w-full mt-10 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 btn-primary group">
-          {loading ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> Đang thiết lập Campaign...</>
-          ) : (
-            <><Sparkles className="w-5 h-5 group-hover:animate-pulse text-yellow-300" /> Bắt đầu Generate AI</>
+        <div className="flex gap-3 mt-10">
+          <button onClick={handleSubmit} disabled={loading || (mode==='free_text' && !freeText)}
+                  className="flex-1 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 btn-primary group">
+            {loading ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Đang thiết lập Campaign...</>
+            ) : (
+              <><Sparkles className="w-5 h-5 group-hover:animate-pulse text-yellow-300" /> Bắt đầu Generate AI</>
+            )}
+          </button>
+          {mode === 'structured' && (
+            <button onClick={handleSaveTemplate} disabled={loading || (!form.product.trim() && !form.key_message.trim())}
+                    className="px-5 py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 btn-secondary disabled:opacity-30"
+                    title="Lưu form hiện tại làm template">
+              <BookmarkPlus className="w-5 h-5" />
+              <span className="hidden md:inline">Lưu Template</span>
+            </button>
           )}
-        </button>
+        </div>
       </div>
       <Toast />
     </div>
