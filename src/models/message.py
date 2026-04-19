@@ -21,7 +21,7 @@ class MasterMessage(BaseModel):
         description="Hành trình cảm xúc: audience cảm thấy [A] → [B] → [C]"
     )
     
-    emotional_angle: str = Field(description="Góc cảm xúc muốn chạm")
+    emotional_angle: str = Field(default="", description="Góc cảm xúc muốn chạm")
     
     proof_elements: list[str] = Field(
         default_factory=list,
@@ -39,11 +39,11 @@ class MasterMessage(BaseModel):
         description="Micro-story hoặc scenario cụ thể để Channel Renderer phát triển"
     )
     
-    cta_primary: str = Field(description="CTA chính")
+    cta_primary: str = Field(default="", description="CTA chính")
     cta_secondary: Optional[str] = Field(default=None, description="CTA phụ (lower commitment)")
     
     taboo_points: list[str] = Field(default_factory=list, description="Không đề cập")
-    tone_direction: str = Field(description="Hướng dẫn tone cụ thể bằng ví dụ")
+    tone_direction: str = Field(default="", description="Hướng dẫn tone cụ thể bằng ví dụ")
     
     copywriting_framework: str = Field(
         default="PAS",
