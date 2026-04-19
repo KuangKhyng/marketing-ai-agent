@@ -5,11 +5,12 @@ Reviewer Node
 - Model: Claude Haiku (checking task) + rule-based checks
 - Type: Semi-deterministic
 
-Scores content on 4 dimensions:
+Scores content on 5 dimensions:
 1. Brand fit (threshold: 0.7)
 2. Factuality (threshold: 0.9)
 3. Channel fit (threshold: 0.6)
 4. Business fit (threshold: 0.7)
+5. Content depth (threshold: 0.7)
 """
 import json
 from datetime import datetime
@@ -32,6 +33,7 @@ THRESHOLDS = {
     ReviewDimension.FACTUALITY: 0.9,
     ReviewDimension.CHANNEL_FIT: 0.6,
     ReviewDimension.BUSINESS_FIT: 0.7,
+    ReviewDimension.CONTENT_DEPTH: 0.7,    # NEW
 }
 
 
@@ -232,7 +234,7 @@ def _run_llm_review(content, brief, context_pack, master_message, config, node_t
 
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Đánh giá content theo 4 dimensions:\n\n{user_message}"),
+        HumanMessage(content=f"Đánh giá content theo 5 dimensions:\n\n{user_message}"),
     ]
 
     handler = TokenUsageHandler()
