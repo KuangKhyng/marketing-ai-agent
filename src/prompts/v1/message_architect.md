@@ -29,10 +29,14 @@ Content có chiều sâu tạo TENSION trước, rồi mới resolve: "Bạn đa
   
   "emotional_journey": "Mô tả hành trình cảm xúc: audience bắt đầu cảm thấy [A] → trong lúc đọc chuyển sang [B] → cuối cùng cảm thấy [C]. Ví dụ: bắt đầu bằng 'tò mò + hơi bất an' → chuyển sang 'nhận ra, đồng cảm' → kết thúc bằng 'empowered, muốn hành động'",
   
+  "emotional_angle": "Góc cảm xúc muốn chạm đến",
+
   "proof_elements": [
     "Bằng chứng cụ thể: số liệu, case study, social proof, hoặc logic argument",
     "MỖI proof phải SPECIFIC — không chấp nhận 'nhiều người đã thành công'"
   ],
+
+  "proof_angle": "Góc proof để tạo sự chân thực",
   
   "unique_angle": "Góc nhìn mà CHỈ content này có — nếu bỏ dòng này đi, content có giống 100 bài khác không? Nếu giống → viết lại",
   
