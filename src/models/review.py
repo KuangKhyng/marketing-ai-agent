@@ -8,6 +8,7 @@ class ReviewDimension(str, Enum):
     FACTUALITY = "factuality"
     CHANNEL_FIT = "channel_fit"
     BUSINESS_FIT = "business_fit"
+    CONTENT_DEPTH = "content_depth"    # NEW
 
 
 class DimensionScore(BaseModel):

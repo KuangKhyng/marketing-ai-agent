@@ -22,14 +22,10 @@ Mọi content do hệ thống tạo ra phải tuân thủ các nguyên tắc sau
 - OK: casual, friendly, insightful, empowering, authentic
 - KHÔNG OK: fear-mongering, preachy, condescending, over-promising, manipulative
 
-## 4. Platform-specific policies
-- Facebook: disclaimer text nếu mention health/wellness
-- Instagram: không dùng misleading before/after
-- TikTok: không dùng exaggerated claims trong voiceover hoặc text overlays
-
-## 5. Review criteria
-Content phải pass TẤT CẢ 4 điều kiện:
-1. **Brand fit**: đúng tone, đúng vocabulary, không vi phạm brand rules (nếu có brand)
-2. **Factuality**: mọi claim đều có cơ sở, không bịa
-3. **Channel fit**: format đúng platform specs, tone native
-4. **Business fit**: CTA rõ ràng, đúng objective, match audience stage
+## 4. Review criteria
+Content phải pass TẤT CẢ 5 điều kiện:
+1. Brand fit: đúng tone, vocabulary, brand rules (nếu có)
+2. Factuality: mọi claim đều có cơ sở, không bịa
+3. Channel fit: format đúng platform specs, tone native
+4. Business fit: CTA rõ ràng, đúng objective
+5. Content depth: có insight, có specificity, không viết cho có
