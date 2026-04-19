@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, RotateCcw, Loader2 } from 'lucide-react';
+import { Check, RotateCcw, Loader2, ArrowLeft } from 'lucide-react';
 
 const FEEDBACK_OPTIONS = [
   { key: 'tone', label: 'Tone chưa phù hợp' },
@@ -14,6 +14,7 @@ const FEEDBACK_OPTIONS = [
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useToast } from '../components/Toast';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 export default function StrategyReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
@@ -119,6 +120,11 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
 
       {/* Action buttons */}
       <div className="flex gap-4">
+        <button onClick={() => setPhase('brief_review')} disabled={loading}
+                className="px-6 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
+          <ArrowLeft className="w-5 h-5" />
+          Brief
+        </button>
         <button onClick={handleRevise} disabled={loading || (checks.length === 0 && !comment)}
                 className="w-1/3 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary disabled:opacity-40">
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RotateCcw className="w-5 h-5" />}
@@ -131,19 +137,13 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
         </button>
       </div>
 
-      {loading && checks.length === 0 && !comment && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-          <div className="glass-panel p-8 rounded-2xl text-center max-w-sm animate-in zoom-in-95 duration-300">
-            <Loader2 className="w-10 h-10 animate-spin text-purple-400 mx-auto mb-4" />
-            <p className="text-lg font-semibold mb-2 text-white">Đang tạo content...</p>
-            <p className="text-sm text-gray-400 mb-4">AI đang thiết kế nội dung chi tiết cho các kênh.</p>
-            <div className="w-full bg-[#0f0f1a] h-2 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 w-full animate-pulse"></div>
-            </div>
-            <p className="text-xs text-gray-500 mt-4">Thường mất khoảng 30-60 giây.</p>
-          </div>
-        </div>
-      )}
+      <LoadingOverlay
+        show={loading}
+        title={checks.length === 0 && !comment ? 'Đang tạo content...' : 'Đang điều chỉnh strategy...'}
+        description={checks.length === 0 && !comment
+          ? 'AI đang thiết kế nội dung chi tiết cho các kênh.'
+          : 'AI đang sửa chiến lược theo feedback của bạn.'}
+      />
 
       <Toast />
     </div>

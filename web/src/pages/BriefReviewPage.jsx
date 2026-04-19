@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, Edit, Loader2, Database } from 'lucide-react';
+import { Check, Edit, Loader2, Database, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 export default function BriefReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
@@ -162,6 +163,11 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
 
       {/* Buttons */}
       <div className="flex gap-4">
+        <button onClick={() => setPhase('input')} disabled={loading}
+                className="px-6 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
+          <ArrowLeft className="w-5 h-5" />
+          Quay lại
+        </button>
         <button onClick={() => setEditMode(!editMode)} disabled={loading}
                 className="px-8 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
           <Edit className="w-5 h-5" />
@@ -173,6 +179,11 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
           Approve — Tạo Strategy
         </button>
       </div>
+      <LoadingOverlay
+        show={loading}
+        title="Đang tạo strategy..."
+        description="AI đang phân tích brief và thiết kế chiến lược campaign."
+      />
       <Toast />
     </div>
   );

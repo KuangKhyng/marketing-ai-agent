@@ -40,4 +40,11 @@ export const brandsAPI = {
   preview: (brandId) => api.get(`/brands/${brandId}/preview`),
 };
 
+export const templatesAPI = {
+  list: () => api.get('/templates/'),
+  get: (id) => api.get(`/templates/${id}`),
+  create: (data) => api.post('/templates/', data),
+  delete: (id) => api.delete(`/templates/${id}`),
+};
+
 export default api;

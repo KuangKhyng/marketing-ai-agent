@@ -18,6 +18,7 @@ from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+from src.knowledge.brand_manager import BrandManager
 
 
 # Load prompt template
@@ -158,15 +159,14 @@ def _override_brand_from_state(brief: CampaignBrief, state: dict) -> CampaignBri
     if brand_id:
         # User selected a brand in UI → load brand metadata
         try:
-            from src.knowledge.brand_manager import BrandManager
             manager = BrandManager()
-            brand_meta = manager._load_brand_meta(brand_id)
+            brand_data = manager.get_brand(brand_id)
 
-            if brand_meta:
-                brief.brand.name = brand_meta.get("name", brand_id)
+            if brand_data:
+                brief.brand.name = brand_data.get("name", brand_id)
                 brief.brand.voice_profile_id = brand_id
-                brief.brand.forbidden_claims = brand_meta.get("forbidden_claims", [])
-                brief.brand.mandatory_terms = brand_meta.get("mandatory_terms", [])
+                brief.brand.forbidden_claims = brand_data.get("forbidden_claims", [])
+                brief.brand.mandatory_terms = brand_data.get("mandatory_terms", [])
             else:
                 # Brand metadata not found — fallback to generic
                 brief.brand.name = ""
