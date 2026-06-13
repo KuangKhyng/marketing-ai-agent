@@ -1,56 +1,164 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+import asyncio
+import json
+import queue as _queue
 import uuid
+import os
+import pickle
 
 from api.schemas import (
     CampaignInput, BriefEdit, StrategyFeedback,
     ContentFeedback, PipelineStatus,
 )
 from api.pipeline_runner import PipelineRunner
+from api.events import progress_bus
+from api.cache import campaign_cache
 
 router = APIRouter()
 
 from datetime import datetime, timedelta
 from threading import Lock
+from pathlib import Path
+from src.config.settings import PROJECT_ROOT
 
-# Session với TTL để tránh memory leak
+_SESSIONS_DIR = PROJECT_ROOT / "outputs"
+
+
 class SessionStore:
-    def __init__(self, ttl_minutes: int = 60):
-        self._sessions: dict[str, dict] = {}
+    """
+    Session store với in-memory cache + file-based persistence.
+
+    Khi server restart, state được khôi phục từ outputs/{run_id}/state.pkl
+    thay vì mất hết. TTL kiểm tra dựa trên file mtime.
+    """
+    def __init__(self, ttl_minutes: int = 120):
+        self._cache: dict[str, PipelineRunner] = {}
         self._lock = Lock()
         self.ttl = timedelta(minutes=ttl_minutes)
 
     def set(self, run_id: str, runner: PipelineRunner):
         with self._lock:
-            self._sessions[run_id] = {
-                "runner": runner,
-                "created_at": datetime.now(),
-            }
-            self._cleanup()
+            self._cache[run_id] = runner
+            self._persist(run_id, runner)
 
     def get(self, run_id: str) -> PipelineRunner | None:
         with self._lock:
-            entry = self._sessions.get(run_id)
-            if not entry:
-                return None
-            if datetime.now() - entry["created_at"] > self.ttl:
-                del self._sessions[run_id]
-                return None
-            return entry["runner"]
-            
-    def __setitem__(self, run_id: str, runner):
+            # 1. Try in-memory cache first
+            if run_id in self._cache:
+                state_file = self._state_path(run_id)
+                if state_file.exists():
+                    age = datetime.now() - datetime.fromtimestamp(state_file.stat().st_mtime)
+                    if age > self.ttl:
+                        del self._cache[run_id]
+                        state_file.unlink(missing_ok=True)
+                        return None
+                return self._cache[run_id]
+
+            # 2. Try restoring from disk (server restarted)
+            return self._restore(run_id)
+
+    def __setitem__(self, run_id: str, runner: PipelineRunner):
         self.set(run_id, runner)
 
-    def _cleanup(self):
-        now = datetime.now()
-        expired = [k for k, v in self._sessions.items() if now - v["created_at"] > self.ttl]
-        for k in expired:
-            del self._sessions[k]
+    def _state_path(self, run_id: str) -> Path:
+        return _SESSIONS_DIR / run_id / "state.pkl"
 
-    @property
-    def count(self) -> int:
-        return len(self._sessions)
+    def _persist(self, run_id: str, runner: PipelineRunner):
+        path = self._state_path(run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(runner.state, f)
+        except Exception:
+            pass  # Persist failure không được làm crash request
+
+    def _restore(self, run_id: str) -> PipelineRunner | None:
+        path = self._state_path(run_id)
+        if not path.exists():
+            return None
+        age = datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)
+        if age > self.ttl:
+            path.unlink(missing_ok=True)
+            return None
+        try:
+            with open(path, "rb") as f:
+                state = pickle.load(f)
+            runner = PipelineRunner()
+            runner.state = state
+            self._cache[run_id] = runner
+            return runner
+        except Exception:
+            path.unlink(missing_ok=True)
+            return None
+
 
 sessions = SessionStore(ttl_minutes=120)
+
+
+def _save_session(run_id: str, runner: PipelineRunner):
+    """Persist runner state to disk after each phase update."""
+    sessions._persist(run_id, runner)
+
+
+_DEV_MODE = os.getenv("ENV", "production").lower() in ("dev", "development", "local")
+
+_USER_MESSAGES = {
+    "brief_parser": "Không thể phân tích yêu cầu. Vui lòng mô tả rõ hơn và thử lại.",
+    "strategist": "Không thể tạo chiến lược. Vui lòng thử lại.",
+    "message_architect": "Không thể tạo message architecture. Vui lòng thử lại.",
+    "channel_renderer": "Không thể tạo nội dung. Vui lòng thử lại.",
+    "reviewer": "Không thể review nội dung. Vui lòng thử lại.",
+}
+
+
+@router.get("/{run_id}/events")
+async def stream_events(run_id: str, request: Request):
+    """
+    SSE endpoint — stream pipeline progress events to frontend.
+
+    Connect BEFORE making a phase POST request to receive events.
+    Events: {"type": "node_start"|"node_done"|"cache_hit"|"done", "node": str, "message": str}
+    Stream closes automatically when the phase completes (sentinel None).
+    """
+    q = progress_bus.create(run_id)
+
+    async def generate():
+        loop = asyncio.get_event_loop()
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                msg = await loop.run_in_executor(
+                    None, lambda: q.get(block=True, timeout=1.0)
+                )
+                if msg is None:  # sentinel — phase done
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    break
+                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            except _queue.Empty:
+                yield ": keepalive\n\n"  # SSE comment, keeps connection alive
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+def _pipeline_error(state: dict) -> HTTPException:
+    """Convert pipeline error into user-friendly HTTPException."""
+    raw = state.get("error", "Unknown error")
+    node = state.get("current_node", "")
+    user_msg = _USER_MESSAGES.get(node, "Đã xảy ra lỗi. Vui lòng thử lại.")
+    detail = {"message": user_msg}
+    if _DEV_MODE:
+        detail["debug"] = raw
+    return HTTPException(status_code=500, detail=detail)
 
 
 @router.post("/start", response_model=PipelineStatus)
@@ -72,7 +180,7 @@ def start_campaign(input: CampaignInput):
     state = runner.phase_1_parse(raw_input, brand_id=input.brand_id)
 
     if state.get("error"):
-        raise HTTPException(status_code=500, detail=state["error"])
+        raise _pipeline_error(state)
 
     run_id = state["trace"].run_id
     sessions[run_id] = runner
@@ -99,20 +207,38 @@ def start_campaign(input: CampaignInput):
 def approve_brief(run_id: str, edit: BriefEdit = None):
     """
     Approve (or edit) the parsed brief, then generate strategy.
-    Runs Phase 2 (strategist).
+    Runs Phase 2 (strategist). Checks cache first.
     """
     runner = sessions.get(run_id)
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Apply edits if any
     if edit:
         runner.update_brief_fields(edit)
 
-    state = runner.phase_2_strategy()
+    raw_input = runner.state.get("raw_input", "")
+    brand_id = runner.state.get("brand_id")
+
+    def push(event):
+        progress_bus.push(run_id, event)
+
+    # Check strategy cache (only when no edit — edits change the brief)
+    cached_strategy = campaign_cache.get_strategy(raw_input, brand_id) if not edit else None
+    if cached_strategy:
+        runner.state["strategy"] = cached_strategy
+        progress_bus.push(run_id, {"type": "cache_hit", "node": "strategist", "message": "Chiến lược được tải từ cache."})
+        state = runner.state
+    else:
+        state = runner.phase_2_strategy(on_progress=push)
+        if not state.get("error") and state.get("strategy"):
+            campaign_cache.set_strategy(raw_input, brand_id, state["strategy"])
+
+    progress_bus.close(run_id)
 
     if state.get("error"):
-        raise HTTPException(status_code=500, detail=state["error"])
+        raise _pipeline_error(state)
+
+    _save_session(run_id, runner)
 
     return PipelineStatus(
         run_id=run_id,
@@ -127,30 +253,51 @@ def approve_brief(run_id: str, edit: BriefEdit = None):
 def review_strategy(run_id: str, feedback: StrategyFeedback):
     """
     Review strategy — approve or request revision.
-    If approved, runs Phase 3 (message architect + channel renderer).
-    If revision requested, re-runs strategist with feedback.
+    If approved, runs Phase 3 (message architect + channel renderer). Checks cache.
+    If revision requested, re-runs strategist with feedback (no cache).
     """
     runner = sessions.get(run_id)
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    raw_input = runner.state.get("raw_input", "")
+    brand_id = runner.state.get("brand_id")
+
+    def push(event):
+        progress_bus.push(run_id, event)
+
     if not feedback.approved:
-        # Compile feedback and re-run strategist
         feedback_text = _compile_strategy_feedback(feedback)
-        state = runner.phase_2_strategy(feedback=feedback_text)
+        state = runner.phase_2_strategy(feedback=feedback_text, on_progress=push)
+        progress_bus.close(run_id)
+        _save_session(run_id, runner)
 
         return PipelineStatus(
             run_id=run_id,
-            phase="strategy_review",  # Stay on strategy review
+            phase="strategy_review",
             strategy=state.get("strategy"),
             cost_estimate=state["trace"].total_cost_estimate,
         )
 
-    # Approved — generate content
-    state = runner.phase_3_content()
+    # Approved — check content cache first (only when no revision loop)
+    cached = campaign_cache.get_content(raw_input, brand_id) if runner.state.get("revision_count", 0) == 0 else None
+    if cached:
+        runner.state["master_message"] = cached["master_message"]
+        runner.state["campaign_content"] = cached["campaign_content"]
+        runner.state["human_approved"] = True
+        progress_bus.push(run_id, {"type": "cache_hit", "node": "channel_renderer", "message": "Nội dung được tải từ cache."})
+        state = runner.state
+    else:
+        state = runner.phase_3_content(on_progress=push)
+        if not state.get("error") and state.get("campaign_content"):
+            campaign_cache.set_content(raw_input, brand_id, state.get("master_message"), state["campaign_content"])
+
+    progress_bus.close(run_id)
 
     if state.get("error"):
-        raise HTTPException(status_code=500, detail=state["error"])
+        raise _pipeline_error(state)
+
+    _save_session(run_id, runner)
 
     return PipelineStatus(
         run_id=run_id,
@@ -172,6 +319,9 @@ def review_content(run_id: str, feedback: ContentFeedback):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    def push(event):
+        progress_bus.push(run_id, event)
+
     # Apply inline edits
     for pf in feedback.piece_feedbacks:
         if pf.edited_body:
@@ -179,7 +329,9 @@ def review_content(run_id: str, feedback: ContentFeedback):
 
     if not feedback.approved:
         feedback_text = _compile_content_feedback(feedback)
-        state = runner.phase_3_content(feedback=feedback_text)
+        state = runner.phase_3_content(feedback=feedback_text, on_progress=push)
+        progress_bus.close(run_id)
+        _save_session(run_id, runner)
 
         return PipelineStatus(
             run_id=run_id,
@@ -190,7 +342,9 @@ def review_content(run_id: str, feedback: ContentFeedback):
         )
 
     # Approved — run automated review
-    state = runner.phase_4_review()
+    state = runner.phase_4_review(on_progress=push)
+    progress_bus.close(run_id)
+    _save_session(run_id, runner)
 
     return PipelineStatus(
         run_id=run_id,

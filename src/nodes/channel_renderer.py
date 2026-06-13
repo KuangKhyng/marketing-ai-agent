@@ -13,6 +13,8 @@ from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import anthropic
 
 from src.models.brief import Channel, Deliverable
 from src.models.content import ContentPiece, CampaignContent
@@ -20,6 +22,8 @@ from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+
+MAX_PARALLEL_RENDERS = 3
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts" / "v1"
 
@@ -85,6 +89,7 @@ def channel_renderer_node(state: dict) -> dict:
                 render_tasks.append((channel, deliverable))
 
         # Execute all renders in parallel (I/O-bound LLM calls)
+        # Cap workers to avoid hitting Anthropic rate limits
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def render_one(args):
@@ -104,7 +109,7 @@ def channel_renderer_node(state: dict) -> dict:
         total_tokens = {"input": 0, "output": 0}
         errors = []
 
-        with ThreadPoolExecutor(max_workers=len(render_tasks)) as executor:
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_RENDERS, len(render_tasks))) as executor:
             futures = {executor.submit(render_one, task): task for task in render_tasks}
             for future in as_completed(futures):
                 piece, thread_trace = future.result()
@@ -151,6 +156,17 @@ def channel_renderer_node(state: dict) -> dict:
         }
 
 
+@retry(
+    retry=retry_if_exception_type(anthropic.RateLimitError),
+    wait=wait_exponential(multiplier=1, min=5, max=60),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _render_with_retry(llm, structured_llm, messages, handler):
+    """Call LLM with retry on rate limit errors."""
+    return structured_llm.invoke(messages, config={"callbacks": [handler]})
+
+
 def _render_single_piece(
     channel: Channel,
     deliverable: Deliverable,
@@ -195,7 +211,7 @@ def _render_single_piece(
         ]
 
         handler = TokenUsageHandler()
-        piece = structured_llm.invoke(messages, config={"callbacks": [handler]})
+        piece = _render_with_retry(llm, structured_llm, messages, handler)
 
         # Ensure channel and deliverable are set correctly
         piece.channel = channel
