@@ -101,7 +101,7 @@ export default function AuthGate({ children }) {
     <Frame>
       <form onSubmit={handleSubmit} className="w-full max-w-[340px]">
         <div className="font-copy text-[1.375rem] font-semibold leading-tight">
-          Nhà của Gấu Trắng
+          Xưởng Chiến Dịch
         </div>
         <div className="t-label mt-1.5 mb-7">Campaign Engine</div>
 

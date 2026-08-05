@@ -43,7 +43,7 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
                     style={{ background: 'var(--cham)', boxShadow: '0 0 12px var(--cham-glow)' }} />
               <span className="text-[1.0625rem] font-light tracking-tight"
                     style={{ fontFamily: 'var(--font-display)' }}>
-                Nhà của Gấu Trắng
+                Xưởng Chiến Dịch
               </span>
             </div>
             <div className="t-label mt-2 md:ml-4">Campaign Engine</div>
