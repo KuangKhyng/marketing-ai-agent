@@ -189,7 +189,7 @@ export default function BrandDetailPage() {
                 <div className="sheet">
                   {docs.map((doc, i) => (
                     <div key={doc.path}
-                         className={`group flex items-center gap-3 px-5 py-3.5 ${i < docs.length - 1 ? 'border-b border-rule' : ''}`}>
+                         className={`group lift flex items-center gap-3 px-5 py-3.5 ${i < docs.length - 1 ? 'border-b border-rule' : ''}`}>
                       <button
                         onClick={() => navigate(`/knowledge/${brandId}/edit/${doc.path}`)}
                         className="flex-1 min-w-0 text-left"

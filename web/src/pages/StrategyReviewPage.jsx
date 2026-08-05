@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useToast } from '../components/Toast';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useProgress } from '../hooks/useProgress';
 
 const FEEDBACK_OPTIONS = [
   { key: 'tone',     label: 'Tone chưa phù hợp' },
@@ -17,6 +18,7 @@ const FEEDBACK_OPTIONS = [
 
 export default function StrategyReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
+  const { steps, start, stop } = useProgress();
   const [checks, setChecks] = useState([]);
   const [comment, setComment] = useState('');
 
@@ -24,6 +26,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
 
   const handleApprove = async () => {
     setLoading(true);
+    await start(campaignData.run_id);
     try {
       const { data } = await campaignAPI.reviewStrategy(campaignData.run_id, {
         approved: true, feedback_checks: [], comment: null,
@@ -34,6 +37,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+      stop();
     }
   };
 
@@ -43,6 +47,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       return;
     }
     setLoading(true);
+    await start(campaignData.run_id);
     try {
       const { data } = await campaignAPI.reviewStrategy(campaignData.run_id, {
         approved: false, feedback_checks: checks, comment,
@@ -54,6 +59,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+      stop();
     }
   };
 
@@ -76,7 +82,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
       </header>
 
       {/* Bản chiến lược — đọc như tài liệu, không như thẻ giao diện */}
-      <article className="sheet px-6 py-7 md:px-9 md:py-9 mb-9">
+      <article className="sheet spot px-6 py-7 md:px-10 md:py-10 mb-9">
         <div className="md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {campaignData?.strategy || ''}
@@ -133,6 +139,7 @@ export default function StrategyReviewPage({ campaignData, setCampaignData, setP
 
       <LoadingOverlay
         show={loading}
+        steps={steps}
         title={hasFeedback ? 'Đang viết lại chiến lược' : 'Đang viết nội dung'}
         description={hasFeedback
           ? 'Hệ thống đang dựng lại hướng tiếp cận theo ghi chú của bạn.'

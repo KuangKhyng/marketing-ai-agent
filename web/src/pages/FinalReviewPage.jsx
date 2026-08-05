@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { campaignAPI } from '../api/client';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
@@ -44,7 +45,7 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
       </header>
 
       {/* Kết luận đặt trước chi tiết */}
-      <div className="sheet px-5 py-4 mb-8 flex items-center justify-between gap-4 flex-wrap"
+      <div className="sheet spot px-5 py-4 mb-8 flex items-center justify-between gap-4 flex-wrap"
            style={{ borderLeft: `2px solid ${result.overall_passed ? 'var(--pass)' : 'var(--fail)'}` }}>
         <div>
           <p className="t-label mb-1">Kết luận</p>
@@ -67,8 +68,11 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
             const meta = DIMENSIONS[s.dimension] || { label: s.dimension.replace(/_/g, ' '), threshold: 0.7 };
             const pct = Math.max(0, Math.min(1, s.score)) * 100;
             return (
-              <div
+              <motion.div
                 key={s.dimension}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * .07, duration: .4, ease: [.16, 1, .3, 1] }}
                 className={`px-5 py-4 ${i < arr.length - 1 ? 'border-b border-rule' : ''}`}
               >
                 <div className="flex items-baseline justify-between gap-4 mb-2">
@@ -81,10 +85,13 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
                 </div>
 
                 {/* Thanh đo có vạch ngưỡng — thấy ngay còn thiếu bao nhiêu */}
-                <div className="relative h-[6px] mb-2.5" style={{ background: 'var(--inset)' }}>
-                  <div
-                    className="absolute inset-y-0 left-0"
-                    style={{ width: `${pct}%`, background: s.passed ? 'var(--pass)' : 'var(--fail)' }}
+                <div className="relative h-[6px] mb-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.06)' }}>
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: .8, delay: i * .09, ease: [.16, 1, .3, 1] }}
+                    style={{ background: s.passed ? 'var(--pass)' : 'var(--fail)' }}
                   />
                   <div
                     className="absolute inset-y-[-3px] w-px"
@@ -94,11 +101,11 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
                 </div>
 
                 <p className="text-[0.875rem] text-ink-2 leading-relaxed">{s.feedback}</p>
-              </div>
+              </motion.div>
             );
           })}
         </div>
-        <p className="t-label mt-2 normal-case tracking-normal font-normal text-ink-3">
+        <p className="mt-2 text-[0.8125rem] text-ink-3">
           Vạch dọc là ngưỡng đạt của từng chiều.
         </p>
       </section>

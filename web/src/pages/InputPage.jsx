@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { campaignAPI, brandsAPI, templatesAPI } from '../api/client';
 import { Loader2, X } from 'lucide-react';
@@ -134,12 +135,41 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
 
   return (
     <div className="rise">
-      <header className="mb-9">
-        <h1 className="t-page mb-2.5">Đề bài chiến dịch</h1>
-        <p className="t-lede">
-          Mô tả điều bạn muốn nói và nói với ai. Phần còn lại sẽ được dựng ra để bạn duyệt từng bước.
-        </p>
-      </header>
+      {/* Hero căn giữa — khoảnh khắc mở đầu, chỗ duy nhất trong app được phép kịch tính */}
+      <motion.header
+        className="text-center pt-6 pb-14 md:pt-14 md:pb-20"
+        initial="hide" animate="show"
+        variants={{ show: { transition: { staggerChildren: .09 } } }}
+      >
+        {[
+          <p key="e" className="t-label mb-5">Bước 1 · Đề bài</p>,
+          <h1 key="h" className="t-page mb-5">
+            Nói điều gì.<br /><span className="dim">Nói với ai.</span>
+          </h1>,
+          <p key="l" className="t-lede mx-auto !max-w-[46ch]">
+            Phần còn lại được dựng ra để bạn duyệt từng bước — brief, chiến lược, rồi mới tới chữ.
+          </p>,
+        ].map((child, i) => (
+          <motion.div
+            key={i}
+            variants={{
+              hide: { opacity: 0, y: 18 },
+              show: { opacity: 1, y: 0,
+                      transition: { duration: .7, ease: [.16, 1, .3, 1] } },
+            }}
+          >
+            {child}
+          </motion.div>
+        ))}
+      </motion.header>
+
+      <motion.div
+        className="sheet spot px-6 py-7 md:px-8 md:py-8"
+        initial={{ opacity: 0, y: 26 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: .12 }}
+        transition={{ duration: .7, ease: [.16, 1, .3, 1] }}
+      >
 
       {/* Brand */}
       {brands.length > 0 && (
@@ -303,7 +333,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2.5 pt-6 border-t border-rule">
+      <div className="flex flex-wrap gap-2.5 pt-7 mt-1 border-t border-rule">
         <button
           onClick={handleSubmit}
           disabled={loading || (mode === 'free_text' && !freeText.trim())}
@@ -322,6 +352,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
           </button>
         )}
       </div>
+      </motion.div>
 
       <Toast />
     </div>

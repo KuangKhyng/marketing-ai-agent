@@ -82,7 +82,7 @@ export default function BrandsPage() {
     <div className="rise">
       <header className="flex items-start justify-between gap-4 flex-wrap mb-8">
         <div>
-          <h1 className="t-page mb-2.5">Kho brand</h1>
+          <h1 className="t-page !text-[2rem] !font-light mb-2.5">Kho brand</h1>
           <p className="t-lede">
             Mỗi brand có nhận diện, giọng điệu và quy định riêng. Nạp càng đầy, nội dung càng đúng chất.
           </p>
@@ -189,11 +189,11 @@ export default function BrandsPage() {
           </p>
         </div>
       ) : (
-        <div className="sheet">
+        <div className="sheet spot">
           {brands.map((brand, i) => (
             <div
               key={brand.id}
-              className={`group flex items-center gap-4 px-5 py-4 ${i < brands.length - 1 ? 'border-b border-rule' : ''}`}
+              className={`group lift flex items-center gap-4 px-5 py-4 ${i < brands.length - 1 ? 'border-b border-rule' : ''}`}
             >
               <button
                 onClick={() => navigate(`/knowledge/${brand.id}`)}
@@ -229,6 +229,14 @@ export default function BrandsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Gợi ý lấp khoảng trống khi kho còn ít brand — nói việc cần làm tiếp */}
+      {!loading && brands.length > 0 && (
+        <p className="mt-6 text-[0.875rem] text-ink-3 max-w-[56ch] leading-relaxed">
+          Bấm vào một brand để bổ sung tài liệu. Bốn ô trên thanh hoàn thiện là nhận diện,
+          giọng điệu, sản phẩm và đối tượng — ô nào còn xám là phần AI chưa có gì để dựa vào.
+        </p>
       )}
 
       <Toast />

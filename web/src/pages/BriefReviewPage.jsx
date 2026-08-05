@@ -3,6 +3,7 @@ import { campaignAPI } from '../api/client';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useProgress } from '../hooks/useProgress';
 
 const GOAL_LABEL = {
   awareness: 'Nhận diện',
@@ -20,6 +21,7 @@ const CHANNELS = [
 
 export default function BriefReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
+  const { steps, start, stop } = useProgress();
   const brief = campaignData?.brief;
   const contextInfo = campaignData?.context_info;
   const [editMode, setEditMode] = useState(false);
@@ -36,6 +38,7 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
 
   const handleApprove = async () => {
     setLoading(true);
+    await start(campaignData.run_id); // mở luồng tiến trình trước khi POST
     try {
       const { data } = await campaignAPI.approveBrief(campaignData.run_id, editMode ? editedBrief : null);
       setCampaignData(data);
@@ -44,6 +47,7 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+      stop();
     }
   };
 
@@ -57,7 +61,7 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
       </header>
 
       {!editMode ? (
-        <dl className="sheet mb-6">
+        <dl className="sheet spot mb-6">
           <Row label="Mục tiêu" value={GOAL_LABEL[brief.goal] || brief.goal} />
           <Row label="Sản phẩm / dịch vụ" value={brief.offer.product_or_service} />
           <Row label="Đối tượng" value={brief.audience.persona_description} />
@@ -152,8 +156,9 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
 
       <LoadingOverlay
         show={loading}
+        steps={steps}
         title="Đang dựng chiến lược"
-        description="Hệ thống đang đào insight từ đối tượng rồi mới lên hướng tiếp cận."
+        description="Đào insight từ đối tượng trước, rồi mới lên hướng tiếp cận."
       />
       <Toast />
     </div>

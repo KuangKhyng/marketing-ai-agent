@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { campaignAPI } from '../api/client';
 import { Loader2, ArrowLeft, Check } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useProgress } from '../hooks/useProgress';
 
 const CHANNEL_LABEL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok' };
 const DELIVERABLE_LABEL = {
@@ -30,6 +32,7 @@ function formatForPlatform(piece) {
 
 export default function ContentReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
+  const { steps, start, stop } = useProgress();
   const pieces = campaignData?.content?.pieces || [];
   const [activeTab, setActiveTab] = useState(0);
   const [editMode, setEditMode] = useState({});
@@ -42,6 +45,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
 
   const handleApprove = async () => {
     setLoading(true);
+    await start(campaignData.run_id);
     try {
       const pieceFeedbacks = pieces.map((_, i) => ({
         piece_index: i,
@@ -58,11 +62,13 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+      stop();
     }
   };
 
   const handleRevise = async () => {
     setLoading(true);
+    await start(campaignData.run_id);
     try {
       const pieceFeedbacks = Object.entries(feedback)
         .filter(([, fb]) => fb.needsChange)
@@ -82,6 +88,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+      stop();
     }
   };
 
@@ -120,7 +127,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
         </div>
       </header>
 
-      {/* Chọn bài — thanh ngang có kẻ chân, không phải viên thuốc gradient */}
+      {/* Chọn bài — gạch chân trượt giữa các tab bằng shared layout */}
       <div className="scroll-x border-b border-rule mb-7">
         <div className="flex gap-6 min-w-max">
           {pieces.map((piece, i) => {
@@ -131,17 +138,26 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
                 key={i}
                 onClick={() => setActiveTab(i)}
                 aria-current={on ? 'true' : undefined}
-                className={`pb-3 -mb-px border-b-2 text-left transition-colors ${
-                  on ? 'border-cham' : 'border-transparent hover:border-rule-strong'
-                }`}
+                className="relative pb-3 text-left"
               >
-                <span className={`block text-[0.875rem] ${on ? 'font-semibold text-ink' : 'text-ink-2'}`}>
+                <span
+                  className="block text-[0.875rem] transition-colors"
+                  style={{ color: on ? 'var(--ink)' : 'var(--ink-2)', fontWeight: on ? 500 : 400 }}
+                >
                   {CHANNEL_LABEL[piece.channel] || piece.channel}
                 </span>
-                <span className="block t-label mt-0.5 normal-case tracking-normal font-normal">
+                <span className="block mt-0.5 text-[0.75rem] text-ink-3">
                   {DELIVERABLE_LABEL[piece.deliverable] || piece.deliverable}
                   {flagged && <span style={{ color: 'var(--fail)' }}> · cần sửa</span>}
                 </span>
+                {on && (
+                  <motion.span
+                    layoutId="piece-tab"
+                    className="absolute left-0 right-0 -bottom-px h-[2px] rounded-full"
+                    style={{ background: 'var(--cham)', boxShadow: '0 0 10px var(--cham-glow)' }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
               </button>
             );
           })}
@@ -151,7 +167,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
       {activePiece && (
         <>
           {/* Tờ bản thảo */}
-          <article key={activeTab} className="sheet px-6 py-7 md:px-10 md:py-9 mb-4 rise">
+          <article key={activeTab} className="sheet spot px-6 py-7 md:px-10 md:py-9 mb-4 rise">
             {activePiece.hook && (
               <div className="mb-6">
                 <p className="t-label mb-2">Hook</p>
@@ -294,6 +310,7 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
 
       <LoadingOverlay
         show={loading}
+        steps={steps}
         title={needsChangeCount > 0 ? 'Đang viết lại' : 'Đang chấm chất lượng'}
         description={needsChangeCount > 0
           ? 'Hệ thống dựng lại nội dung theo ghi chú của bạn.'

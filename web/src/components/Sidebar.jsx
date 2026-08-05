@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 
-/* Đánh số là hợp lệ ở đây: các bước này THẬT SỰ là một trình tự,
+/* Đánh số hợp lệ ở đây: các bước này thật sự là một trình tự,
    thứ tự mang thông tin người dùng cần. */
 const PHASE_LABEL = {
   input:           'Đề bài',
@@ -15,30 +15,50 @@ export default function Sidebar({ phase, phases }) {
   const currentIdx = phases.indexOf(phase);
 
   return (
-    <nav className="py-2">
-      <ol>
+    <nav className="py-3">
+      <ol className="relative">
+        {/* Đường nối dọc chạy suốt chuỗi bước */}
+        <span
+          aria-hidden="true"
+          className="absolute left-[11px] top-4 bottom-4 w-px"
+          style={{ background: 'var(--rule)' }}
+        />
+
         {phases.map((p, i) => {
           const isActive = p === phase;
           const isDone = i < currentIdx;
 
           return (
-            <li key={p}>
+            <li key={p} className="relative">
               <div
                 aria-current={isActive ? 'step' : undefined}
-                className={`flex items-center gap-3 py-2.5 pl-3 pr-2 border-l-2 transition-colors ${
-                  isActive
-                    ? 'border-cham text-ink'
-                    : 'border-transparent text-ink-3'
-                }`}
+                className="flex items-center gap-3 py-2.5 pl-0 pr-2 rounded-[10px] transition-colors"
+                style={isActive ? { background: 'rgba(255,255,255,.04)' } : undefined}
               >
                 <span
-                  className={`w-5 shrink-0 text-center font-data text-[0.75rem] num ${
-                    isActive ? 'text-cham' : isDone ? 'text-pass' : 'text-ink-3'
-                  }`}
+                  className="relative z-10 w-[23px] h-[23px] shrink-0 rounded-full flex items-center justify-center
+                             font-data text-[0.6875rem] num transition-colors"
+                  style={
+                    isActive
+                      ? { background: 'var(--cham)', color: 'var(--on-cham)', fontWeight: 600,
+                          boxShadow: '0 0 16px rgba(227,179,65,.45)' }
+                      : isDone
+                        ? { background: 'var(--pass-soft)', color: 'var(--pass)',
+                            boxShadow: 'inset 0 0 0 1px rgba(95,212,155,.4)' }
+                        : { background: 'var(--paper)', color: 'var(--ink-3)',
+                            boxShadow: 'inset 0 0 0 1px var(--rule)' }
+                  }
                 >
-                  {isDone ? <Check className="w-3.5 h-3.5 mx-auto" strokeWidth={2.5} /> : i + 1}
+                  {isDone ? <Check className="w-3 h-3" strokeWidth={3} /> : i + 1}
                 </span>
-                <span className={`text-[0.875rem] ${isActive ? 'font-semibold' : 'font-normal'}`}>
+
+                <span
+                  className="text-[0.875rem] transition-colors"
+                  style={{
+                    color: isActive ? 'var(--ink)' : isDone ? 'var(--ink-2)' : 'var(--ink-3)',
+                    fontWeight: isActive ? 500 : 400,
+                  }}
+                >
                   {PHASE_LABEL[p] || p}
                 </span>
               </div>

@@ -97,13 +97,13 @@ export default function ExportPage({ campaignData, setPhase }) {
             <CopyButton text={allText} label="Chép tất cả" />
           </div>
 
-          <div className="sheet">
+          <div className="sheet spot">
             {pieces.map((piece, i) => {
               const copyText = formatPieceForCopy(piece);
               const isOpen = expanded === i;
               return (
                 <div key={i} className={i < pieces.length - 1 ? 'border-b border-rule' : ''}>
-                  <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="lift flex items-center justify-between gap-3 px-5 py-3.5">
                     <div className="min-w-0">
                       <p className="text-[0.9375rem] font-medium truncate">
                         {CHANNEL_LABEL[piece.channel] || piece.channel}
