@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, KeyRound, AlertTriangle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { authAPI, getAccessKey, setAccessKey, clearAccessKey } from '../api/client';
 
 /**
@@ -58,8 +58,8 @@ export default function AuthGate({ children }) {
     } catch (err) {
       setError(
         err.response?.status === 401
-          ? 'Access key không đúng.'
-          : 'Không kết nối được server. Thử lại sau.'
+          ? 'Key không đúng. Kiểm tra lại hoặc hỏi người cấp key.'
+          : 'Không gọi được server. Thử lại sau ít phút.'
       );
     } finally {
       setSubmitting(false);
@@ -70,69 +70,77 @@ export default function AuthGate({ children }) {
 
   if (phase === 'checking') {
     return (
-      <CenteredCard>
-        <Loader2 className="w-6 h-6 animate-spin mx-auto opacity-60" />
-      </CenteredCard>
+      <Frame>
+        <Loader2 className="w-5 h-5 animate-spin text-ink-3" />
+      </Frame>
     );
   }
 
   if (phase === 'misconfigured' || phase === 'offline') {
     const isConfig = phase === 'misconfigured';
     return (
-      <CenteredCard>
-        <AlertTriangle className="w-8 h-8 mx-auto mb-4 text-amber-400" />
-        <h1 className="text-xl font-bold mb-2">
-          {isConfig ? 'Server chưa được cấu hình' : 'Không kết nối được server'}
-        </h1>
-        <p className="text-sm opacity-70 leading-relaxed">
-          {isConfig
-            ? 'Thiếu biến môi trường APP_API_KEY. Quản trị viên cần set biến này rồi redeploy.'
-            : 'Kiểm tra kết nối mạng hoặc trạng thái server rồi tải lại trang.'}
-        </p>
-      </CenteredCard>
+      <Frame>
+        <div className="max-w-sm">
+          <p className="t-label mb-3" style={{ color: 'var(--fail)' }}>
+            {isConfig ? 'Cấu hình' : 'Kết nối'}
+          </p>
+          <h1 className="t-section mb-2">
+            {isConfig ? 'Server chưa được cấu hình' : 'Không kết nối được server'}
+          </h1>
+          <p className="text-[0.9375rem] text-ink-2 leading-relaxed">
+            {isConfig
+              ? 'Thiếu biến môi trường APP_API_KEY. Quản trị viên cần đặt biến này rồi deploy lại.'
+              : 'Kiểm tra kết nối mạng hoặc trạng thái server, sau đó tải lại trang.'}
+          </p>
+        </div>
+      </Frame>
     );
   }
 
   return (
-    <CenteredCard>
-      <KeyRound className="w-8 h-8 mx-auto mb-4 text-purple-400" />
-      <h1 className="text-2xl font-bold mb-2 tracking-tight">Marketing Campaign Engine</h1>
-      <p className="text-sm opacity-60 mb-6">Nhập access key để tiếp tục.</p>
+    <Frame>
+      <form onSubmit={handleSubmit} className="w-full max-w-[340px]">
+        <div className="font-copy text-[1.375rem] font-semibold leading-tight">
+          Nhà của Gấu Trắng
+        </div>
+        <div className="t-label mt-1.5 mb-7">Campaign Engine</div>
 
-      <form onSubmit={handleSubmit}>
+        <label htmlFor="access-key" className="t-label block mb-2">Access key</label>
         <input
+          id="access-key"
           type="password"
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
-          placeholder="Access key"
           autoFocus
           autoComplete="current-password"
-          className="w-full p-4 rounded-xl text-sm glass-input placeholder:opacity-40 text-center tracking-wider"
+          className="field font-data"
+          aria-describedby={error ? 'access-key-error' : undefined}
+          aria-invalid={error ? 'true' : undefined}
         />
 
         {error && (
-          <p className="text-sm text-red-400 mt-3 animate-in fade-in">{error}</p>
+          <p id="access-key-error" className="mt-2.5 text-[0.8125rem] leading-snug" style={{ color: 'var(--fail)' }}>
+            {error}
+          </p>
         )}
 
         <button
           type="submit"
           disabled={submitting || !keyInput.trim()}
-          className="w-full mt-5 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 btn-primary disabled:opacity-40"
+          className="btn btn-primary w-full mt-5"
         >
-          {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-          {submitting ? 'Đang kiểm tra...' : 'Vào ứng dụng'}
+          {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+          {submitting ? 'Đang kiểm tra' : 'Vào ứng dụng'}
         </button>
       </form>
-    </CenteredCard>
+    </Frame>
   );
 }
 
-function CenteredCard({ children }) {
+function Frame({ children }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="glass-panel p-8 md:p-10 rounded-2xl w-full max-w-md text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {children}
-      </div>
+    <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="rise">{children}</div>
     </div>
   );
 }

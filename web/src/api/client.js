@@ -35,6 +35,51 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Đọc luồng tiến trình SSE của một lần chạy.
+ *
+ * Dùng fetch thay vì EventSource vì EventSource không gửi được header,
+ * mà endpoint này nằm sau X-API-Key.
+ *
+ * Promise resolve NGAY khi kết nối mở (server tạo hàng đợi ở thời điểm đó),
+ * rồi đọc tiếp ở nền — nên phải await hàm này TRƯỚC khi POST, nếu không
+ * event phát ra sớm sẽ rơi vào hư không.
+ */
+export async function streamProgress(runId, onEvent, signal) {
+  const res = await fetch(`${baseURL}/campaigns/${runId}/events`, {
+    headers: { 'X-API-Key': getAccessKey() },
+    signal,
+  });
+  if (!res.ok || !res.body) return;
+
+  (async () => {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+
+        for (const frame of frames) {
+          const line = frame.split('\n').find(l => l.startsWith('data:'));
+          if (!line) continue; // dòng ": keepalive"
+          try {
+            const event = JSON.parse(line.slice(5).trim());
+            onEvent(event);
+            if (event.type === 'done') return;
+          } catch { /* frame lỗi thì bỏ qua, không làm hỏng cả luồng */ }
+        }
+      }
+    } catch { /* abort hoặc mất mạng — tiến trình chỉ là phụ trợ */ }
+  })();
+}
+
 export const authAPI = {
   // Public — không cần key
   status: () => api.get('/auth/status', { _skipAuthHandler: true }),

@@ -1,24 +1,46 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Check, AlertCircle, Info } from 'lucide-react';
+
+const ICONS = { success: Check, error: AlertCircle, info: Info };
 
 export function useToast() {
   const [toast, setToast] = useState(null);
 
   const show = (message, type = 'error') => {
-    setToast({ message, type });
+    setToast({ message, type, id: Date.now() });
     setTimeout(() => setToast(null), 5000);
   };
 
   const Toast = () => {
-    if (!toast) return null;
-    
+    const accent =
+      toast?.type === 'success' ? 'var(--pass)' :
+      toast?.type === 'error'   ? 'var(--fail)' : 'var(--cham)';
+    const Icon = ICONS[toast?.type] || Info;
+
     return (
-      <div className={`fixed bottom-6 right-6 z-50 px-6 py-3 rounded-xl text-sm font-medium shadow-2xl animate-in slide-in-from-bottom-4 ${
-        toast.type === 'error' ? 'bg-red-500/90 text-white' :
-        toast.type === 'success' ? 'bg-emerald-500/90 text-white' :
-        'bg-purple-500/90 text-white'
-      }`}>
-        {toast.message}
-      </div>
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            role="status"
+            aria-live="polite"
+            className="sheet fixed bottom-6 right-6 z-50 max-w-sm flex items-start gap-3 pl-4 pr-5 py-3.5"
+            initial={{ opacity: 0, y: 20, scale: .96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: .98 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+          >
+            <span
+              className="w-5 h-5 shrink-0 rounded-full flex items-center justify-center mt-px"
+              style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)`, color: accent }}
+            >
+              <Icon className="w-3 h-3" strokeWidth={3} />
+            </span>
+            <span className="text-[0.875rem] leading-snug">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     );
   };
 

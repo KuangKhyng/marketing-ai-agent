@@ -1,83 +1,466 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
-@plugin "@tailwindcss/typography";
+
+/* ============================================================
+   OBSIDIAN — hệ thiết kế
+   Nền đá đen, vàng làm điểm nhấn, viền tóc bắt sáng ở mép trên.
+   Chỉ một chế độ tối: cam kết hẳn một thế giới, không làm nửa vời.
+   ============================================================ */
 
 :root {
-  --primary: #8b5cf6;
-  --primary-dark: #6d28d9;
-  --primary-glow: rgba(139, 92, 246, 0.5);
-  --bg-color: #0b0c10;
-  --surface: rgba(26, 26, 46, 0.7);
-  --surface-light: rgba(37, 37, 64, 0.8);
-  --text: #f3f4f6;
-  --text-muted: #9ca3af;
-  --gold: #fbbf24;
-  --success: #10b981;
-  --error: #ef4444;
-  --border: rgba(255, 255, 255, 0.1);
+  /* Nền — obsidian ngả rêu, xám lệch nhẹ về phía accent nên đọc ra "có chọn" */
+  --void:      #050506;
+  --paper:     #0b0b0d;
+  --sheet:     #121316;
+  --sheet-2:   #171a19;
+  --inset:     #08090a;
+
+  /* Viền — trắng alpha thấp, không phải xám đặc */
+  --rule:        rgba(255, 255, 255, .08);
+  --rule-strong: rgba(255, 255, 255, .16);
+  --edge-hi:     rgba(255, 255, 255, .10);  /* mép trên bắt sáng */
+
+  /* Chữ */
+  --ink:   #ecf0ec;
+  --ink-2: #9fa79f;
+  --ink-3: #6e766e;
+
+  /* Rêu pastel — điểm nhấn duy nhất */
+  --cham:       #a8c8a1;
+  --cham-hover: #bcd7b6;
+  --cham-soft:  rgba(168, 200, 161, .13);
+  --cham-glow:  rgba(168, 200, 161, .30);
+  --on-cham:    #0e1110;
+
+  /* Ngữ nghĩa — cùng họ pastel để không phá tổng thể */
+  --pass:      #9fd4b4;
+  --pass-soft: rgba(159, 212, 180, .13);
+  --warn:      #e2cb9b;
+  --warn-soft: rgba(226, 203, 155, .13);
+  --fail:      #e5a8a0;
+  --fail-soft: rgba(229, 168, 160, .13);
+
+  /* Chữ */
+  --font-ui:   'IBM Plex Sans', system-ui, sans-serif;
+  --font-copy: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-display: 'Archivo', system-ui, sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Hình học — bo tròn rộng rãi, nút bo hết cỡ */
+  --r:      14px;
+  --r-lg:   20px;
+  --r-pill: 100px;
+
+  color-scheme: dark;
 }
+
+@theme inline {
+  --color-paper:       var(--paper);
+  --color-sheet:       var(--sheet);
+  --color-inset:       var(--inset);
+  --color-ink:         var(--ink);
+  --color-ink-2:       var(--ink-2);
+  --color-ink-3:       var(--ink-3);
+  --color-rule:        var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-cham:        var(--cham);
+  --color-cham-soft:   var(--cham-soft);
+  --color-on-cham:     var(--on-cham);
+  --color-pass:        var(--pass);
+  --color-pass-soft:   var(--pass-soft);
+  --color-warn:        var(--warn);
+  --color-warn-soft:   var(--warn-soft);
+  --color-fail:        var(--fail);
+  --color-fail-soft:   var(--fail-soft);
+
+  --font-ui:   var(--font-ui);
+  --font-copy: var(--font-copy);
+  --font-data: var(--font-data);
+}
+
+/* ============================================================
+   Nền tảng
+   ============================================================ */
+
+html { -webkit-text-size-adjust: 100%; background: var(--paper); }
 
 body {
-  background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.15), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.1), transparent 25%);
-  color: var(--text);
-  font-family: 'Outfit', system-ui, sans-serif;
   margin: 0;
   min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  /* Ba lớp: lưới phối cảnh mờ → quầng sáng rêu trên đỉnh → nền tối dần ra rìa */
+  background:
+    linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px) 0 0 / 100% 46px,
+    linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px) 0 0 / 46px 100%,
+    radial-gradient(100% 62% at 50% -8%, rgba(168,200,161,.07), transparent 60%),
+    radial-gradient(130% 100% at 50% 0%, #101215 0%, var(--paper) 42%, var(--void) 100%);
+  background-attachment: fixed;
 }
 
-/* Glassmorphism utilities */
-.glass-panel {
-  background: var(--surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+::selection { background: var(--cham); color: var(--on-cham); }
+
+:focus-visible {
+  outline: 2px solid var(--cham);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
-.glass-input {
-  background: rgba(15, 15, 26, 0.6);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(4px);
-  transition: all 0.3s ease;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
 }
 
-.glass-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-glow);
-  outline: none;
+/* ============================================================
+   Chữ
+   ============================================================ */
+
+.t-page {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 1.6rem + 4vw, 4rem);
+  font-weight: 200;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  color: var(--ink);
 }
+
+.t-page .dim { color: var(--ink-3); }
+
+.t-section {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 300;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* Nhãn hoa giãn rộng — dấu hiệu nhận dạng của hệ này */
+.t-label {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+.t-lede {
+  color: var(--ink-2);
+  font-size: 1.0625rem;
+  font-weight: 300;
+  line-height: 1.65;
+  max-width: 62ch;
+}
+
+/* Bản thảo — giữ weight 400 và cỡ đủ lớn để đọc dấu tiếng Việt lâu không mỏi */
+.t-copy {
+  font-family: var(--font-copy);
+  font-size: 1.0625rem;
+  font-weight: 400;
+  line-height: 1.8;
+  color: var(--ink);
+}
+
+.t-data {
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   Bề mặt — công thức ba lớp: mép sáng, nhẫn tóc, bóng sâu
+   ============================================================ */
+
+.sheet {
+  position: relative;
+  background: color-mix(in srgb, var(--sheet) 72%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  border-radius: var(--r);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .14),
+    0 0 0 1px rgba(255, 255, 255, .07),
+    0 30px 70px rgba(0, 0, 0, .55);
+}
+
+.inset {
+  background: var(--inset);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+/* Đèn rọi theo con trỏ — Layout gắn --mx/--my khi di chuột */
+.spot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 0%),
+    var(--cham-soft),
+    transparent 70%
+  );
+}
+.spot:hover::before { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spot::before { display: none; }
+}
+
+/* ============================================================
+   Điều khiển — nút bo tròn hết cỡ
+   ============================================================ */
+
+.btn {
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.8125rem 1.375rem;
+  border-radius: var(--r-pill);
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .18s, color .18s, box-shadow .18s, transform .18s;
+}
+
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, #aa77ff 100%);
-  border: none;
-  color: white;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+  background: var(--cham);
+  color: var(--on-cham);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 8px 24px rgba(168, 200, 161, .20);
 }
-
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
-  filter: brightness(1.1);
+  background: var(--cham-hover);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34), 0 10px 30px rgba(168, 200, 161, .30);
 }
 
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  box-shadow: none;
+.btn-default {
+  background: rgba(255, 255, 255, .05);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10), 0 0 0 1px var(--rule);
+}
+.btn-default:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 0 1px var(--rule-strong);
 }
 
-.btn-secondary {
-  background: var(--surface-light);
-  border: 1px solid var(--border);
-  color: var(--text);
-  transition: all 0.3s ease;
+.btn-quiet { background: transparent; color: var(--ink-2); }
+.btn-quiet:hover:not(:disabled) { background: rgba(255, 255, 255, .06); color: var(--ink); }
+
+.btn-go {
+  background: var(--pass);
+  color: var(--on-cham);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 8px 24px rgba(159, 212, 180, .20);
+}
+.btn-go:hover:not(:disabled) { background: #b4dfc7; }
+
+.btn-danger {
+  background: transparent;
+  color: var(--fail);
+  box-shadow: 0 0 0 1px rgba(229, 168, 160, .45);
+}
+.btn-danger:hover:not(:disabled) { background: var(--fail-soft); }
+
+/* Chip chọn nhiều */
+.chip {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  padding: 0.5625rem 1rem;
+  border-radius: var(--r-pill);
+  border: 0;
+  background: rgba(255, 255, 255, .04);
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--rule);
+  transition: background-color .18s, color .18s, box-shadow .18s;
+}
+.chip:hover { background: rgba(255, 255, 255, .07); color: var(--ink); }
+.chip[data-on='true'] {
+  background: var(--cham-soft);
+  color: var(--cham);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px rgba(168, 200, 161, .45);
 }
 
-.btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+.field {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink);
+  background: rgba(0, 0, 0, .28);
+  border: 0;
+  border-radius: 10px;
+  padding: 0.8125rem 1rem;
+  box-shadow: inset 0 0 0 1px var(--rule);
+  transition: box-shadow .18s, background-color .18s;
+}
+.field::placeholder { color: var(--ink-3); }
+.field:focus {
+  outline: none;
+  background: rgba(0, 0, 0, .4);
+  box-shadow: inset 0 0 0 1px var(--cham), 0 0 0 3px var(--cham-soft);
+}
+textarea.field { resize: vertical; line-height: 1.7; }
+select.field { appearance: none; padding-right: 2.25rem; }
+select.field option { background: var(--sheet-2); color: var(--ink); }
+
+/* Nhãn trạng thái */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .4375rem;
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: .3125rem .75rem;
+  border-radius: var(--r-pill);
+  border: 0;
+  box-shadow: 0 0 0 1px currentColor;
+}
+.tag-pass { color: var(--pass); background: var(--pass-soft); }
+.tag-warn { color: var(--warn); background: var(--warn-soft); }
+.tag-fail { color: var(--fail); background: var(--fail-soft); }
+.tag-info { color: var(--cham); background: var(--cham-soft); }
+
+/* ============================================================
+   Markdown
+   ============================================================ */
+
+.md { font-family: var(--font-copy); font-size: 1.0625rem; font-weight: 400; line-height: 1.8; color: var(--ink-2); }
+.md > * + * { margin-top: 1em; }
+.md h1, .md h2, .md h3 {
+  font-family: var(--font-display);
+  font-weight: 300;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin-top: 2em;
+}
+.md h1 { font-size: 1.5rem; }
+.md h2 { font-size: 1.25rem; padding-bottom: .5rem; border-bottom: 1px solid var(--rule); }
+.md h3 { font-size: 1.0625rem; }
+.md > :first-child { margin-top: 0; }
+.md ul, .md ol { padding-left: 1.25em; }
+.md li + li { margin-top: .4em; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li::marker { color: var(--ink-3); }
+.md strong { font-weight: 600; color: var(--ink); }
+.md em { font-style: italic; }
+.md code {
+  font-family: var(--font-data);
+  font-size: .875em;
+  background: rgba(255, 255, 255, .06);
+  color: var(--cham);
+  padding: .12em .4em;
+  border-radius: 4px;
+}
+.md pre {
+  font-family: var(--font-data);
+  font-size: .8125rem;
+  background: var(--inset);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--rule);
+  padding: 1rem 1.125rem;
+  overflow-x: auto;
+  color: var(--ink-2);
+}
+.md pre code { background: none; padding: 0; color: inherit; }
+.md blockquote {
+  border-left: 2px solid var(--cham);
+  padding-left: 1.125em;
+  color: var(--ink-2);
+}
+.md table { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: .875rem; }
+.md th, .md td { border: 1px solid var(--rule); padding: .625rem .875rem; text-align: left; }
+.md th { background: rgba(255, 255, 255, .04); font-weight: 500; color: var(--ink); }
+.md a { color: var(--cham); text-decoration: underline; text-underline-offset: 3px; }
+
+.scroll-x { overflow-x: auto; }
+
+/* ============================================================
+   Chuyển cảnh
+   ============================================================ */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: rise .42s cubic-bezier(.16, 1, .3, 1) both; }
+
+/* ============================================================
+   Chuyển động & phản hồi
+   ============================================================ */
+
+/* Hàng bấm được phải trông bấm được */
+.lift { transition: background-color .2s, box-shadow .2s, transform .2s; }
+.lift:hover {
+  background: rgba(255, 255, 255, .035);
   transform: translateY(-1px);
+}
+
+/* Khung xương lúc chờ dữ liệu — hơn hẳn chữ "Đang tải…" */
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .05);
+  border-radius: 8px;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+/* Chấm nhịp cho bước đang chạy */
+@keyframes breathe {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0   var(--cham-glow); }
+  50%      { opacity: .65; box-shadow: 0 0 0 5px transparent; }
+}
+.breathe { animation: breathe 1.8s ease-in-out infinite; }
+
+/* Vệt sáng chạy dọc thanh tiến trình không xác định */
+@keyframes sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+.sweep { animation: sweep 1.6s cubic-bezier(.4, 0, .2, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after, .breathe, .sweep { animation: none; }
+  .lift:hover { transform: none; }
 }

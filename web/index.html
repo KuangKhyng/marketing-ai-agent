@@ -1,10 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi" style="background:#0e0e12">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0e0e12" />
     <title>Nhà của Gấu Trắng</title>
+
+    <!-- Cả ba face đều có subset `vietnamese` — bắt buộc, nếu không dấu
+         tiếng Việt sẽ rơi về font hệ thống và trộn typeface giữa câu. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@200;300;400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap&subset=vietnamese,latin-ext,latin">
   </head>
   <body>
     <div id="root"></div>

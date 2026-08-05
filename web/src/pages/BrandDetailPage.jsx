@@ -1,51 +1,50 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
-import { ArrowLeft, Plus, Trash2, Edit3, Save, X, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useToast } from '../components/Toast';
 
 const TABS = [
-  { id: 'docs', label: '📄 Documents', icon: '📄' },
-  { id: 'voice', label: '🎤 Voice', icon: '🎤' },
-  { id: 'settings', label: '⚙️ Settings', icon: '⚙️' },
-  { id: 'preview', label: '👁 Preview', icon: '👁' },
+  { id: 'docs',     label: 'Tài liệu' },
+  { id: 'voice',    label: 'Giọng điệu' },
+  { id: 'settings', label: 'Thiết lập' },
+  { id: 'preview',  label: 'AI thấy gì' },
 ];
 
 const DOC_CATEGORIES = {
-  brand_core: { label: 'BRAND CORE', icon: '📝', color: '#8b5cf6' },
-  products: { label: 'PRODUCTS', icon: '📦', color: '#f59e0b' },
-  audience: { label: 'AUDIENCE', icon: '👥', color: '#10b981' },
-  policies: { label: 'POLICIES', icon: '🛡️', color: '#ef4444' },
-  general: { label: 'OTHER', icon: '📄', color: '#6b7280' },
+  brand_core: 'Nhận diện & giọng',
+  products:   'Sản phẩm',
+  audience:   'Đối tượng',
+  policies:   'Quy định',
+  general:    'Khác',
 };
 
 const DOC_TYPE_OPTIONS = [
-  { value: 'brand_core', label: '📝 Brand Core (identity, tone...)', prefix: '' },
-  { value: 'products', label: '📦 Product / Dịch vụ', prefix: 'products/' },
-  { value: 'audience', label: '👥 Audience / Persona', prefix: 'audience/' },
-  { value: 'policies', label: '🛡️ Policy / Quy định', prefix: 'policies/' },
+  { value: 'brand_core', label: 'Nhận diện, giọng điệu', prefix: '' },
+  { value: 'products',   label: 'Sản phẩm / dịch vụ',    prefix: 'products/' },
+  { value: 'audience',   label: 'Chân dung đối tượng',   prefix: 'audience/' },
+  { value: 'policies',   label: 'Quy định nội dung',     prefix: 'policies/' },
 ];
 
 export default function BrandDetailPage() {
   const { brandId } = useParams();
   const navigate = useNavigate();
+  const { showToast, Toast } = useToast();
+
   const [brand, setBrand] = useState(null);
   const [tab, setTab] = useState('docs');
   const [loading, setLoading] = useState(true);
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ type: 'products', name: '' });
 
-  // Voice profile state
   const [voiceProfile, setVoiceProfile] = useState(null);
   const [voiceDirty, setVoiceDirty] = useState(false);
-
-  // Settings state
   const [settings, setSettings] = useState(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
-
-  // Preview state
   const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => { loadBrand(); }, [brandId]);
   useEffect(() => { if (tab === 'voice') loadVoice(); }, [tab]);
@@ -55,9 +54,11 @@ export default function BrandDetailPage() {
     try {
       const { data } = await brandsAPI.get(brandId);
       setBrand(data);
-      setSettings({ name: data.name, description: data.description, color: data.color, icon: data.icon,
-                     default_channels: data.default_channels || [], default_goal: data.default_goal || 'awareness',
-                     forbidden_claims: data.forbidden_claims || [], mandatory_terms: data.mandatory_terms || [] });
+      setSettings({
+        name: data.name, description: data.description, color: data.color, icon: data.icon,
+        default_channels: data.default_channels || [], default_goal: data.default_goal || 'awareness',
+        forbidden_claims: data.forbidden_claims || [], mandatory_terms: data.mandatory_terms || [],
+      });
     } catch { navigate('/knowledge'); }
     finally { setLoading(false); }
   };
@@ -73,17 +74,20 @@ export default function BrandDetailPage() {
   };
 
   const saveVoice = async () => {
-    await brandsAPI.updateVoice(brandId, voiceProfile);
-    setVoiceDirty(false);
+    setBusy(true);
+    try { await brandsAPI.updateVoice(brandId, voiceProfile); setVoiceDirty(false); showToast('Đã lưu giọng điệu.', 'success'); }
+    catch (err) { showToast(err.response?.data?.detail?.message || err.message); }
+    finally { setBusy(false); }
   };
 
   const saveSettings = async () => {
-    await brandsAPI.update(brandId, settings);
-    setSettingsDirty(false);
-    loadBrand();
+    setBusy(true);
+    try { await brandsAPI.update(brandId, settings); setSettingsDirty(false); loadBrand(); showToast('Đã lưu thiết lập.', 'success'); }
+    catch (err) { showToast(err.response?.data?.detail?.message || err.message); }
+    finally { setBusy(false); }
   };
 
-  const addDocument = async () => {
+  const addDocument = () => {
     if (!newDoc.name) return;
     const opt = DOC_TYPE_OPTIONS.find(o => o.value === newDoc.type);
     const docPath = opt.prefix + newDoc.name.toLowerCase().replace(/\s+/g, '_') + '.md';
@@ -91,276 +95,303 @@ export default function BrandDetailPage() {
   };
 
   const deleteDoc = async (docPath) => {
-    if (!confirm(`Xóa document "${docPath}"?`)) return;
-    await brandsAPI.deleteDoc(brandId, docPath);
-    loadBrand();
+    if (!window.confirm(`Xoá tài liệu “${docPath}”?`)) return;
+    try { await brandsAPI.deleteDoc(brandId, docPath); loadBrand(); }
+    catch (err) { showToast(err.response?.data?.detail?.message || err.message); }
   };
 
-  if (loading) return <div className="text-center py-20 opacity-50">Đang tải...</div>;
+  if (loading) return <p className="text-ink-3 py-12">Đang tải…</p>;
   if (!brand) return null;
 
-  // Group documents by category
   const grouped = {};
   (brand.documents || []).forEach(doc => {
-    const cat = doc.category;
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(doc);
+    (grouped[doc.category] = grouped[doc.category] || []).push(doc);
   });
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/knowledge')} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-          <ArrowLeft className="w-5 h-5" />
+    <div className="rise">
+      <header className="flex items-center gap-3 mb-7">
+        <button onClick={() => navigate('/knowledge')} aria-label="Về kho brand" className="btn btn-quiet !p-2">
+          <ArrowLeft className="w-4 h-4" />
         </button>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-             style={{ backgroundColor: brand.color + '20', color: brand.color }}>
+        <span
+          aria-hidden="true"
+          className="w-9 h-9 shrink-0 flex items-center justify-center text-base rounded-[3px]"
+          style={{ background: brand.color + '1a', border: `1px solid ${brand.color}55` }}
+        >
           {brand.icon}
+        </span>
+        <div className="min-w-0">
+          <h1 className="t-section truncate">{brand.name}</h1>
+          <p className="text-[0.8125rem] text-ink-2 truncate">{brand.description || 'Chưa có mô tả'}</p>
         </div>
-        <div>
-          <h2 className="text-2xl font-bold">{brand.name}</h2>
-          <p className="text-xs opacity-60">{brand.description}</p>
+      </header>
+
+      <div className="scroll-x border-b border-rule mb-7">
+        <div className="flex gap-6 min-w-max">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? 'true' : undefined}
+              className={`pb-3 -mb-px border-b-2 text-[0.875rem] transition-colors ${
+                tab === t.id ? 'border-cham font-semibold text-ink' : 'border-transparent text-ink-2 hover:border-rule-strong'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-[#1a1a2e]/50 p-1 rounded-xl border border-white/5 overflow-x-auto">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                    tab === t.id
-                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
+      {/* ---------------- Tài liệu ---------------- */}
       {tab === 'docs' && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">📄 Documents</h3>
-            <button onClick={() => setShowAddDoc(true)} className="px-4 py-2 rounded-xl text-sm font-medium btn-primary flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Thêm Document
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="t-label">{brand.documents?.length || 0} tài liệu</p>
+            <button onClick={() => setShowAddDoc(true)} className="btn btn-default !py-2 !px-3 !text-[13px]">
+              <Plus className="w-3.5 h-3.5" /> Thêm tài liệu
             </button>
           </div>
 
           {showAddDoc && (
-            <div className="glass-panel rounded-xl p-5 mb-4">
-              <h4 className="text-sm font-semibold mb-3">Thêm Document Mới</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <div className="sheet p-5 mb-5 rise">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-4">
                 <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Loại</label>
-                  <select value={newDoc.type} onChange={e => setNewDoc({...newDoc, type: e.target.value})}
-                          className="w-full p-3 rounded-xl text-sm glass-input text-white [&>option]:bg-[#1a1a2e]">
+                  <label htmlFor="d-type" className="t-label block mb-2">Loại</label>
+                  <select id="d-type" value={newDoc.type}
+                          onChange={e => setNewDoc({ ...newDoc, type: e.target.value })} className="field">
                     {DOC_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tên (không dấu)</label>
-                  <input value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})}
-                         placeholder="ten_document" className="w-full p-3 rounded-xl text-sm glass-input" />
+                  <label htmlFor="d-name" className="t-label block mb-2">Tên file</label>
+                  <input id="d-name" value={newDoc.name}
+                         onChange={e => setNewDoc({ ...newDoc, name: e.target.value })}
+                         placeholder="ca_phe_sua_da" className="field font-data" />
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={addDocument} disabled={!newDoc.name} className="px-4 py-2 rounded-xl text-sm font-medium btn-primary disabled:opacity-50">
-                  → Tạo & Bắt đầu viết
+              <div className="flex gap-2.5">
+                <button onClick={addDocument} disabled={!newDoc.name} className="btn btn-primary">
+                  Tạo và viết
                 </button>
-                <button onClick={() => setShowAddDoc(false)} className="px-4 py-2 rounded-xl text-sm btn-secondary">Hủy</button>
+                <button onClick={() => setShowAddDoc(false)} className="btn btn-quiet">Huỷ</button>
               </div>
             </div>
           )}
 
-          {Object.entries(DOC_CATEGORIES).map(([catKey, catInfo]) => {
+          {Object.entries(DOC_CATEGORIES).map(([catKey, catLabel]) => {
             const docs = grouped[catKey];
-            if (!docs || docs.length === 0) return null;
+            if (!docs?.length) return null;
             return (
-              <div key={catKey} className="mb-5">
-                <h4 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: catInfo.color }}>
-                  {catInfo.icon} {catInfo.label}
-                </h4>
-                <div className="space-y-2">
-                  {docs.map(doc => (
-                    <div key={doc.path} className="glass-panel rounded-xl p-4 flex items-center justify-between group hover:brightness-110 transition-all">
-                      <div className="flex items-center gap-3 cursor-pointer flex-1"
-                           onClick={() => navigate(`/knowledge/${brandId}/edit/${doc.path}`)}>
-                        <span className="text-base">{catInfo.icon}</span>
-                        <div>
-                          <p className="text-sm font-medium">{doc.name}</p>
-                          <p className="text-xs opacity-50">{doc.path} · {(doc.size / 1024).toFixed(1)} KB</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => navigate(`/knowledge/${brandId}/edit/${doc.path}`)}
-                                className="p-2 rounded-lg hover:bg-white/10" title="Sửa">
-                          <Edit3 className="w-4 h-4 text-purple-400" />
-                        </button>
-                        <button onClick={() => deleteDoc(doc.path)}
-                                className="p-2 rounded-lg hover:bg-red-500/20" title="Xóa">
-                          <Trash2 className="w-4 h-4" style={{ color: 'var(--error)' }} />
-                        </button>
-                      </div>
+              <section key={catKey} className="mb-6">
+                <p className="t-label mb-2.5">{catLabel}</p>
+                <div className="sheet">
+                  {docs.map((doc, i) => (
+                    <div key={doc.path}
+                         className={`group lift flex items-center gap-3 px-5 py-3.5 ${i < docs.length - 1 ? 'border-b border-rule' : ''}`}>
+                      <button
+                        onClick={() => navigate(`/knowledge/${brandId}/edit/${doc.path}`)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <span className="block text-[0.9375rem] truncate">{doc.name}</span>
+                        <span className="block t-data num mt-0.5 truncate">
+                          {doc.path} · {(doc.size / 1024).toFixed(1)} KB
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => deleteDoc(doc.path)}
+                        aria-label={`Xoá ${doc.path}`}
+                        className="btn btn-quiet !p-2 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        style={{ color: 'var(--fail)' }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
       )}
 
+      {/* ---------------- Giọng điệu ---------------- */}
       {tab === 'voice' && voiceProfile && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">🎤 Voice Profile</h3>
-            <button onClick={saveVoice} disabled={!voiceDirty} className="px-4 py-2 rounded-xl text-sm font-medium btn-primary disabled:opacity-50 flex items-center gap-2">
-              <Save className="w-4 h-4" /> Lưu
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="t-lede !text-[0.9375rem]">Bộ quy tắc giọng dùng cho mọi nội dung của brand này.</p>
+            <button onClick={saveVoice} disabled={!voiceDirty || busy} className="btn btn-primary shrink-0">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Lưu
             </button>
           </div>
+
           <div className="space-y-5">
-            {/* Tone */}
-            <div className="glass-panel rounded-xl p-5">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 text-purple-400">Tone</h4>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Primary Tone</label>
-                  <input value={voiceProfile.tone?.primary || ''} onChange={e => { setVoiceProfile({...voiceProfile, tone: {...voiceProfile.tone, primary: e.target.value}}); setVoiceDirty(true); }}
-                         className="w-full p-3 rounded-xl text-sm glass-input" />
-                </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Secondary Tone</label>
-                  <input value={voiceProfile.tone?.secondary || ''} onChange={e => { setVoiceProfile({...voiceProfile, tone: {...voiceProfile.tone, secondary: e.target.value}}); setVoiceDirty(true); }}
-                         className="w-full p-3 rounded-xl text-sm glass-input" />
-                </div>
+            <Block title="Tông giọng">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-5">
+                <Text label="Tông chính" value={voiceProfile.tone?.primary || ''}
+                      onChange={v => { setVoiceProfile({ ...voiceProfile, tone: { ...voiceProfile.tone, primary: v } }); setVoiceDirty(true); }} />
+                <Text label="Tông phụ" value={voiceProfile.tone?.secondary || ''}
+                      onChange={v => { setVoiceProfile({ ...voiceProfile, tone: { ...voiceProfile.tone, secondary: v } }); setVoiceDirty(true); }} />
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Formality: {voiceProfile.tone?.formality ?? 0.5}</label>
-                <input type="range" min="0" max="1" step="0.1" value={voiceProfile.tone?.formality ?? 0.5}
-                       onChange={e => { setVoiceProfile({...voiceProfile, tone: {...voiceProfile.tone, formality: parseFloat(e.target.value)}}); setVoiceDirty(true); }}
-                       className="w-full accent-purple-500" />
-                <div className="flex justify-between text-xs opacity-50"><span>Casual</span><span>Formal</span></div>
-              </div>
-            </div>
-            {/* Vocabulary */}
-            <div className="glass-panel rounded-xl p-5">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 text-green-400">Vocabulary</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Preferred words (1 per line)</label>
-                  <textarea value={(voiceProfile.vocabulary?.preferred || []).join('\n')}
-                            onChange={e => { setVoiceProfile({...voiceProfile, vocabulary: {...voiceProfile.vocabulary, preferred: e.target.value.split('\n').filter(Boolean)}}); setVoiceDirty(true); }}
-                            rows={5} className="w-full p-3 rounded-xl text-sm glass-input resize-y" />
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="t-label">Mức trang trọng</span>
+                  <span className="t-data num">{(voiceProfile.tone?.formality ?? 0.5).toFixed(1)}</span>
                 </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Avoided words (1 per line)</label>
-                  <textarea value={(voiceProfile.vocabulary?.avoided || []).join('\n')}
-                            onChange={e => { setVoiceProfile({...voiceProfile, vocabulary: {...voiceProfile.vocabulary, avoided: e.target.value.split('\n').filter(Boolean)}}); setVoiceDirty(true); }}
-                            rows={5} className="w-full p-3 rounded-xl text-sm glass-input resize-y" />
+                <input
+                  type="range" min="0" max="1" step="0.1"
+                  value={voiceProfile.tone?.formality ?? 0.5}
+                  onChange={e => { setVoiceProfile({ ...voiceProfile, tone: { ...voiceProfile.tone, formality: parseFloat(e.target.value) } }); setVoiceDirty(true); }}
+                  className="w-full accent-[var(--cham)]"
+                />
+                <div className="flex justify-between t-label mt-1">
+                  <span>Thân mật</span><span>Trang trọng</span>
                 </div>
               </div>
-            </div>
-            {/* Anti-AI Rules */}
-            <div className="glass-panel rounded-xl p-5">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 text-yellow-400">Anti-AI Rules</h4>
-              <textarea value={(voiceProfile.anti_ai_rules || []).join('\n')}
-                        onChange={e => { setVoiceProfile({...voiceProfile, anti_ai_rules: e.target.value.split('\n').filter(Boolean)}); setVoiceDirty(true); }}
-                        rows={4} className="w-full p-3 rounded-xl text-sm glass-input resize-y"
-                        placeholder="Mỗi dòng 1 rule..." />
-            </div>
+            </Block>
+
+            <Block title="Từ ngữ">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <Lines label="Từ nên dùng" value={voiceProfile.vocabulary?.preferred || []}
+                       onChange={v => { setVoiceProfile({ ...voiceProfile, vocabulary: { ...voiceProfile.vocabulary, preferred: v } }); setVoiceDirty(true); }} />
+                <Lines label="Từ cần tránh" value={voiceProfile.vocabulary?.avoided || []}
+                       onChange={v => { setVoiceProfile({ ...voiceProfile, vocabulary: { ...voiceProfile.vocabulary, avoided: v } }); setVoiceDirty(true); }} />
+              </div>
+            </Block>
+
+            <Block title="Chống văn máy" hint="Những mở đầu và cách nói sáo mòn cần tránh. Mỗi dòng một quy tắc.">
+              <Lines value={voiceProfile.anti_ai_rules || []} rows={4}
+                     placeholder={'Không mở bài bằng "Bạn đã bao giờ"\nTránh "Trong thế giới hiện đại"'}
+                     onChange={v => { setVoiceProfile({ ...voiceProfile, anti_ai_rules: v }); setVoiceDirty(true); }} />
+            </Block>
           </div>
         </div>
       )}
 
+      {/* ---------------- Thiết lập ---------------- */}
       {tab === 'settings' && settings && (
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">⚙️ Brand Settings</h3>
-            <button onClick={saveSettings} disabled={!settingsDirty} className="px-4 py-2 rounded-xl text-sm font-medium btn-primary disabled:opacity-50 flex items-center gap-2">
-              <Save className="w-4 h-4" /> Lưu
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="t-lede !text-[0.9375rem]">Thông tin chung và luật cứng khi sinh nội dung.</p>
+            <button onClick={saveSettings} disabled={!settingsDirty || busy} className="btn btn-primary shrink-0">
+              {busy && <Loader2 className="w-4 h-4 animate-spin" />} Lưu
             </button>
           </div>
+
           <div className="space-y-5">
-            <div className="glass-panel rounded-xl p-5">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 text-purple-400">General</h4>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tên hiển thị</label>
-                  <input value={settings.name} onChange={e => { setSettings({...settings, name: e.target.value}); setSettingsDirty(true); }}
-                         className="w-full p-3 rounded-xl text-sm glass-input" />
-                </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Mô tả</label>
-                  <input value={settings.description} onChange={e => { setSettings({...settings, description: e.target.value}); setSettingsDirty(true); }}
-                         className="w-full p-3 rounded-xl text-sm glass-input" />
-                </div>
+            <Block title="Chung">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <Text label="Tên hiển thị" value={settings.name}
+                      onChange={v => { setSettings({ ...settings, name: v }); setSettingsDirty(true); }} />
+                <Text label="Mô tả" value={settings.description}
+                      onChange={v => { setSettings({ ...settings, description: v }); setSettingsDirty(true); }} />
               </div>
-            </div>
-            <div className="glass-panel rounded-xl p-5">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 text-red-400">Content Rules</h4>
-              <div className="mb-4">
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Forbidden claims (1 per line)</label>
-                <textarea value={(settings.forbidden_claims || []).join('\n')}
-                          onChange={e => { setSettings({...settings, forbidden_claims: e.target.value.split('\n').filter(Boolean)}); setSettingsDirty(true); }}
-                          rows={3} className="w-full p-3 rounded-xl text-sm glass-input resize-y"
-                          placeholder="AI sẽ KHÔNG BAO GIỜ nói những điều này..." />
+            </Block>
+
+            <Block title="Luật nội dung" hint="Được kiểm tra bằng luật cứng sau khi sinh nội dung, không phụ thuộc vào AI.">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                <Lines label="Không bao giờ được nói" value={settings.forbidden_claims || []}
+                       placeholder="cam kết khỏi bệnh 100%"
+                       onChange={v => { setSettings({ ...settings, forbidden_claims: v }); setSettingsDirty(true); }} />
+                <Lines label="Bắt buộc phải có" value={settings.mandatory_terms || []}
+                       placeholder="tên thương hiệu"
+                       onChange={v => { setSettings({ ...settings, mandatory_terms: v }); setSettingsDirty(true); }} />
               </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Mandatory terms (1 per line)</label>
-                <textarea value={(settings.mandatory_terms || []).join('\n')}
-                          onChange={e => { setSettings({...settings, mandatory_terms: e.target.value.split('\n').filter(Boolean)}); setSettingsDirty(true); }}
-                          rows={3} className="w-full p-3 rounded-xl text-sm glass-input resize-y"
-                          placeholder="PHẢI xuất hiện trong mọi content..." />
-              </div>
-            </div>
-            {/* Danger Zone */}
-            <div className="rounded-xl p-5" style={{ border: '1px solid var(--error)', backgroundColor: 'rgba(239,68,68,0.05)' }}>
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--error)' }}>🗑️ Danger Zone</h4>
-              <p className="text-xs opacity-60 mb-3">Xóa toàn bộ knowledge của brand. Không thể hoàn tác.</p>
-              <button onClick={async () => {
-                if (!confirm(`XÓA HOÀN TOÀN brand "${brand.name}"?`)) return;
-                await brandsAPI.delete(brandId);
-                navigate('/knowledge');
-              }} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ backgroundColor: 'var(--error)', color: '#fff' }}>
-                Xóa Brand
+            </Block>
+
+            <div className="sheet p-5" style={{ borderLeft: '2px solid var(--fail)' }}>
+              <p className="t-label mb-1.5" style={{ color: 'var(--fail)' }}>Xoá brand</p>
+              <p className="text-[0.875rem] text-ink-2 mb-4 max-w-[54ch] leading-relaxed">
+                Xoá toàn bộ tài liệu, giọng điệu và thiết lập của brand này. Không khôi phục được.
+              </p>
+              <button
+                onClick={async () => {
+                  if (!window.confirm(`Xoá hoàn toàn brand “${brand.name}”?`)) return;
+                  await brandsAPI.delete(brandId);
+                  navigate('/knowledge');
+                }}
+                className="btn btn-danger"
+              >
+                Xoá brand này
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ---------------- AI thấy gì ---------------- */}
       {tab === 'preview' && (
         <div>
-          <h3 className="text-lg font-semibold mb-1">👁 Knowledge Preview</h3>
-          <p className="text-xs opacity-60 mb-4">Đây là tất cả thông tin AI sẽ dùng khi tạo content cho brand này</p>
+          <p className="t-lede !text-[0.9375rem] mb-5">
+            Toàn bộ kiến thức sẽ được nạp vào ngữ cảnh khi sinh nội dung cho brand này.
+          </p>
+
           {preview ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <div className="sheet px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+                <span className="t-data num">
+                  {(preview.total_size_bytes / 1024).toFixed(1)} KB · khoảng {preview.estimated_tokens.toLocaleString('vi-VN')} token
+                </span>
+                <span className={`tag ${preview.context_usage_percent < 10 ? 'tag-pass' : 'tag-warn'}`}>
+                  Chiếm {preview.context_usage_percent}% ngữ cảnh
+                </span>
+              </div>
+
               {Object.entries(preview.sections || {}).map(([key, value]) => (
-                <div key={key} className="glass-panel rounded-xl p-5">
-                  <h4 className="text-sm font-bold uppercase tracking-wider mb-2 text-purple-400">{key.replace(/_/g, ' ')}</h4>
+                <section key={key} className="sheet px-5 py-4">
+                  <p className="t-label mb-3">{key.replace(/_/g, ' ')}</p>
                   {typeof value === 'string' ? (
-                    <div className="prose prose-invert prose-sm max-w-none text-sm opacity-80">
+                    <div className="md !text-[0.9375rem]">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
                     </div>
                   ) : (
-                    <pre className="text-xs opacity-70 overflow-auto">{JSON.stringify(value, null, 2)}</pre>
+                    <pre className="font-data text-[0.75rem] text-ink-2 scroll-x">{JSON.stringify(value, null, 2)}</pre>
                   )}
-                </div>
+                </section>
               ))}
-              <div className="glass-panel rounded-xl p-4 flex items-center justify-between text-sm">
-                <span>Total knowledge size: {(preview.total_size_bytes / 1024).toFixed(1)} KB (~{preview.estimated_tokens.toLocaleString()} tokens)</span>
-                <span className={preview.context_usage_percent < 10 ? 'text-green-400' : 'text-yellow-400'}>
-                  Context usage: {preview.context_usage_percent}% {preview.context_usage_percent < 10 ? '✓ Tốt' : '⚠️ Cần tối ưu'}
-                </span>
-              </div>
             </div>
           ) : (
-            <div className="text-center py-10 opacity-50">Đang tải preview...</div>
+            <p className="text-ink-3 py-8">Đang tải…</p>
           )}
         </div>
       )}
+
+      <Toast />
+    </div>
+  );
+}
+
+function Block({ title, hint, children }) {
+  return (
+    <section className="sheet p-5">
+      <p className="t-label mb-1">{title}</p>
+      {hint && <p className="text-[0.8125rem] text-ink-2 mb-4 max-w-[56ch] leading-relaxed">{hint}</p>}
+      <div className={hint ? '' : 'mt-4'}>{children}</div>
+    </section>
+  );
+}
+
+function Text({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="t-label block mb-2">{label}</label>
+      <input value={value} onChange={e => onChange(e.target.value)} className="field" />
+    </div>
+  );
+}
+
+function Lines({ label, value, onChange, rows = 5, placeholder }) {
+  return (
+    <div>
+      {label && <label className="t-label block mb-2">{label}</label>}
+      <textarea
+        value={value.join('\n')}
+        onChange={e => onChange(e.target.value.split('\n').filter(Boolean))}
+        rows={rows}
+        placeholder={placeholder}
+        className="field !text-[0.875rem]"
+      />
     </div>
   );
 }

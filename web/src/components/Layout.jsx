@@ -1,70 +1,86 @@
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import Sidebar from './Sidebar';
+import Scene from './Scene';
+
+/* Đèn rọi theo con trỏ: một listener duy nhất cho mọi phần tử .spot,
+   ghi toạ độ tương đối vào biến CSS. Không state, không re-render. */
+function useSpotlight() {
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const onMove = (e) => {
+      const el = e.target.closest?.('.spot');
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+      el.style.setProperty('--my', `${e.clientY - r.top}px`);
+    };
+
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+}
 
 export default function Layout({ children, phase, phases, onReset, showCampaignNav = true }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isKnowledge = location.pathname.startsWith('/knowledge');
+  useSpotlight();
+
+  const startNew = () => { if (onReset) onReset(); navigate('/'); };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-full overflow-hidden">
-      {/* Sidebar / Topbar */}
-      <aside className="w-full md:w-72 flex md:flex-col glass-panel border-b md:border-b-0 md:border-r border-[#2d2d4a]/50 shrink-0 items-center md:items-stretch justify-between">
-        <div className="p-4 md:p-8 md:pb-4 flex flex-row items-center justify-between w-full md:w-auto">
-          <div className="cursor-pointer" onClick={() => navigate('/')}>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500">
-              ✦ Nhà của Gấu Trắng
-            </h1>
-            <p className="text-xs md:text-sm mt-0 md:mt-2 opacity-70 tracking-wide uppercase font-medium hidden md:block">
-              Campaign Engine
-            </p>
-          </div>
-          <div className="md:hidden flex items-center gap-2">
-            <button onClick={() => navigate('/knowledge')}
-                    className="px-3 py-2 rounded-xl text-lg transition-all btn-secondary" title="Knowledge Base">
-              📚
+    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row">
+      <Scene intensity={isKnowledge ? 0.28 : 1} />
+      <aside className="relative z-10 shrink-0 w-full md:w-[268px] flex md:flex-col md:h-[calc(100vh-2rem)] md:m-4 md:mr-0
+                        sheet !rounded-[18px] overflow-hidden">
+        <div className="flex md:block items-center justify-between w-full px-5 py-4 md:px-7 md:py-8">
+          <button onClick={() => navigate('/')} className="text-left group">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ background: 'var(--cham)', boxShadow: '0 0 12px var(--cham-glow)' }} />
+              <span className="text-[1.0625rem] font-light tracking-tight"
+                    style={{ fontFamily: 'var(--font-display)' }}>
+                Nhà của Gấu Trắng
+              </span>
+            </div>
+            <div className="t-label mt-2 md:ml-4">Campaign Engine</div>
+          </button>
+
+          <div className="flex md:hidden items-center gap-1.5">
+            <button onClick={() => navigate('/knowledge')} className="btn btn-default !py-2 !px-3.5 !text-[13px]">
+              Kho brand
             </button>
-            <button onClick={() => { if (onReset) onReset(); navigate('/'); }}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold transition-all btn-primary flex items-center gap-2">
-              <span>✨</span> New
+            <button onClick={startNew} className="btn btn-primary !py-2 !px-3.5 !text-[13px]">
+              Mới
             </button>
           </div>
         </div>
 
-        {/* Campaign phase navigation */}
         {showCampaignNav && phase && (
-          <div className="hidden md:flex px-4 py-6 flex-1 overflow-y-auto flex-col w-full">
+          <div className="hidden md:block flex-1 overflow-y-auto px-4">
             <Sidebar phase={phase} phases={phases} />
           </div>
         )}
+        {!showCampaignNav && <div className="hidden md:block flex-1" />}
 
-        {/* Knowledge Base section - always visible on desktop */}
-        {!showCampaignNav && (
-          <div className="hidden md:flex flex-1" />
-        )}
-
-        {/* Bottom actions */}
-        <div className="hidden md:block mt-auto p-6 w-full space-y-2">
-          <button onClick={() => navigate('/knowledge')}
-                  className={`w-full py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                    isKnowledge 
-                      ? 'bg-gradient-to-r from-purple-500/20 to-transparent border border-purple-500/30 text-purple-200' 
-                      : 'btn-secondary'
-                  }`}>
-            <span>📚</span> Knowledge Base
+        <div className="hidden md:flex flex-col gap-2 p-5 border-t border-rule">
+          <button
+            onClick={() => navigate('/knowledge')}
+            className={`btn w-full !justify-start ${isKnowledge ? 'btn-default' : 'btn-quiet'}`}
+          >
+            Kho brand
           </button>
-          <button onClick={() => { if (onReset) onReset(); navigate('/'); }}
-                  className={`w-full py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
-                    !isKnowledge ? 'btn-primary' : 'btn-secondary'
-                  }`}>
-            <span>✨</span> New Campaign
+          <button onClick={startNew} className="btn btn-primary w-full !justify-start">
+            <Plus className="w-4 h-4" /> Chiến dịch mới
           </button>
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-10 lg:p-14">
-        <div className="max-w-4xl mx-auto w-full">
+      <main className="relative z-10 flex-1 md:overflow-y-auto">
+        <div className="mx-auto w-full max-w-[880px] px-5 py-9 md:px-10 md:py-12">
           {children}
         </div>
       </main>

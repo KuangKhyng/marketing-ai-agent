@@ -1,6 +1,18 @@
+import { motion } from 'framer-motion';
 import { campaignAPI } from '../api/client';
-import { Loader2, ArrowLeft, Download, ShieldCheck } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import LoadingOverlay from '../components/LoadingOverlay';
+
+/* Ngưỡng đạt khớp với THRESHOLDS trong src/nodes/reviewer.py.
+   Hiển thị ngưỡng để người dùng biết còn cách bao xa, thay vì chỉ thấy đạt/trượt. */
+const DIMENSIONS = {
+  brand_fit:     { label: 'Hợp brand',        threshold: 0.7 },
+  factuality:    { label: 'Đúng sự thật',     threshold: 0.9 },
+  channel_fit:   { label: 'Hợp kênh',         threshold: 0.6 },
+  business_fit:  { label: 'Hợp mục tiêu KD',  threshold: 0.7 },
+  content_depth: { label: 'Chiều sâu',        threshold: 0.7 },
+};
 
 export default function FinalReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
@@ -13,87 +25,113 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
       setCampaignData(data);
       setPhase('export');
     } catch (err) {
-      showToast('Error: ' + (err.response?.data?.detail || err.message));
+      showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBack = () => {
-    setPhase('content_review');
-  };
-
   if (!result) return null;
 
+  const failed = result.dimension_scores.filter(s => !s.passed).length;
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-8">
-        <h2 className="text-4xl font-bold mb-3 tracking-tight flex items-center gap-3">
-          <ShieldCheck className="w-10 h-10 text-purple-400" /> AI Review Final
-        </h2>
-        <p className="text-lg opacity-70">
-          Chấm điểm đa chiều (Tone, Factuality, Channel Fit) trước khi chốt hạ.
+    <div className="rise">
+      <header className="mb-8">
+        <h1 className="t-page mb-2.5">Chấm chất lượng</h1>
+        <p className="t-lede">
+          Nội dung được đối chiếu trên năm chiều. Đây là ý kiến tham khảo — bạn vẫn giữ quyền quyết định.
         </p>
-      </div>
+      </header>
 
-      {/* Score cards border gradient trick + glass */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {result.dimension_scores.map(s => (
-          <div key={s.dimension} 
-               className={`glass-panel p-5 rounded-2xl relative overflow-hidden group transition-all duration-300 hover:-translate-y-1 ${
-                 s.passed ? 'hover:shadow-[0_10px_30px_rgba(16,185,129,0.15)]' : 'hover:shadow-[0_10px_30px_rgba(239,68,68,0.15)]'
-               }`}>
-            <div className={`absolute top-0 left-0 w-full h-1 ${s.passed ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-            <p className="text-xs font-bold tracking-wider mb-2 opacity-60">
-              {s.dimension.replace('_', ' ').toUpperCase()}
-            </p>
-            <div className="flex items-end gap-2 mb-3">
-               <p className="text-4xl font-black">{(s.score * 10).toFixed(1)}</p>
-               <span className="text-lg opacity-50 font-bold mb-1">/10</span>
-            </div>
-            
-            <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${s.passed ? 'text-emerald-400' : 'text-red-400'}`}>
-              {s.passed ? '✅ ĐẠT YÊU CẦU' : '❌ CHƯA ĐẠT'}
-            </p>
-            <p className="text-sm opacity-80 leading-relaxed font-medium line-clamp-3 group-hover:line-clamp-none transition-all">{s.feedback}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className={`glass-panel rounded-2xl p-8 mb-8 text-center border-2 ${result.overall_passed ? 'border-emerald-500/30' : 'border-red-500/30'}`}>
-        <h3 className="text-2xl font-bold mb-2">
-          Kết quả đánh giá chung: <br className="md:hidden" />
-          <span className={`inline-block mt-2 px-6 py-2 rounded-xl ${result.overall_passed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-            {result.overall_passed ? '🚀 SẴN SÀNG LAUNCH' : '⛔ CẦN SỬA CHỮA'}
-          </span>
-        </h3>
-        {result.revision_instructions && (
-             <div className="mt-6 p-6 rounded-xl text-left bg-red-500/10 border border-red-500/20">
-                 <p className="font-bold text-red-400 mb-2 flex items-center gap-2"><span>⚠️</span> Gợi ý sửa từ AI:</p>
-                 <p className="whitespace-pre-wrap text-sm text-red-100">{result.revision_instructions}</p>
-             </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-4">
-          <button onClick={handleBack} disabled={loading}
-                  className="w-1/3 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 btn-secondary transition-all">
-            <ArrowLeft className="w-5 h-5" />
-            Quay lại sửa Content
-          </button>
-          <button onClick={handleApprove} disabled={loading}
-                  className="flex-1 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-primary transition-all disabled:opacity-40">
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-            {result.overall_passed ? 'Approve & Export Campaign' : 'Bỏ qua review & Export'}
-          </button>
-        </div>
-        {!result.overall_passed && (
-          <p className="text-center text-xs opacity-50">
-            💡 Bạn có thể export dù review chưa đạt. Các gợi ý trên chỉ mang tính tham khảo.
+      {/* Kết luận đặt trước chi tiết */}
+      <div className="sheet spot px-5 py-4 mb-8 flex items-center justify-between gap-4 flex-wrap"
+           style={{ borderLeft: `2px solid ${result.overall_passed ? 'var(--pass)' : 'var(--fail)'}` }}>
+        <div>
+          <p className="t-label mb-1">Kết luận</p>
+          <p className="font-copy text-[1.125rem] font-semibold">
+            {result.overall_passed
+              ? 'Đạt cả năm chiều, sẵn sàng bàn giao'
+              : `Chưa đạt ${failed}/${result.dimension_scores.length} chiều`}
           </p>
-        )}
+        </div>
+        <span className={`tag ${result.overall_passed ? 'tag-pass' : 'tag-fail'}`}>
+          {result.overall_passed ? 'Đạt' : 'Cần xem lại'}
+        </span>
       </div>
+
+      {/* Lề chấm bài — mỗi chiều một dòng, có vạch ngưỡng */}
+      <section className="mb-8">
+        <p className="t-label mb-3">Chi tiết từng chiều</p>
+        <div className="sheet">
+          {result.dimension_scores.map((s, i, arr) => {
+            const meta = DIMENSIONS[s.dimension] || { label: s.dimension.replace(/_/g, ' '), threshold: 0.7 };
+            const pct = Math.max(0, Math.min(1, s.score)) * 100;
+            return (
+              <motion.div
+                key={s.dimension}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * .07, duration: .4, ease: [.16, 1, .3, 1] }}
+                className={`px-5 py-4 ${i < arr.length - 1 ? 'border-b border-rule' : ''}`}
+              >
+                <div className="flex items-baseline justify-between gap-4 mb-2">
+                  <span className="text-[0.9375rem] font-medium">{meta.label}</span>
+                  <span className="font-data text-[0.8125rem] num shrink-0"
+                        style={{ color: s.passed ? 'var(--pass)' : 'var(--fail)' }}>
+                    {s.score.toFixed(2)}
+                    <span className="text-ink-3"> / cần {meta.threshold.toFixed(2)}</span>
+                  </span>
+                </div>
+
+                {/* Thanh đo có vạch ngưỡng — thấy ngay còn thiếu bao nhiêu */}
+                <div className="relative h-[6px] mb-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.06)' }}>
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: .8, delay: i * .09, ease: [.16, 1, .3, 1] }}
+                    style={{ background: s.passed ? 'var(--pass)' : 'var(--fail)' }}
+                  />
+                  <div
+                    className="absolute inset-y-[-3px] w-px"
+                    style={{ left: `${meta.threshold * 100}%`, background: 'var(--ink)' }}
+                    title={`Ngưỡng đạt ${meta.threshold}`}
+                  />
+                </div>
+
+                <p className="text-[0.875rem] text-ink-2 leading-relaxed">{s.feedback}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[0.8125rem] text-ink-3">
+          Vạch dọc là ngưỡng đạt của từng chiều.
+        </p>
+      </section>
+
+      {result.revision_instructions && (
+        <section className="mb-8">
+          <p className="t-label mb-2.5">Gợi ý sửa</p>
+          <div className="sheet px-5 py-4" style={{ borderLeft: '2px solid var(--warn)' }}>
+            <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-ink-2">
+              {result.revision_instructions}
+            </p>
+          </div>
+        </section>
+      )}
+
+      <div className="flex flex-wrap gap-2.5 pt-6 border-t border-rule">
+        <button onClick={() => setPhase('content_review')} disabled={loading} className="btn btn-quiet">
+          <ArrowLeft className="w-4 h-4" /> Sửa nội dung
+        </button>
+        <button onClick={handleApprove} disabled={loading} className="btn btn-primary">
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {result.overall_passed ? 'Bàn giao' : 'Vẫn bàn giao'}
+        </button>
+      </div>
+
+      <LoadingOverlay show={loading} title="Đang kết xuất" description="Ghi file bàn giao." hint="Thường mất vài giây." />
       <Toast />
     </div>
   );
