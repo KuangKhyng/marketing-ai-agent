@@ -18,6 +18,7 @@ from typing import Optional
 from datetime import datetime
 
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import InvalidPathError, is_valid_id, safe_join, validate_id
 
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
@@ -27,6 +28,25 @@ GLOBAL_DIR = KNOWLEDGE_DIR / "_global"
 class BrandManager:
     """Manages brand knowledge base operations."""
 
+    def _brand_dir(self, brand_id: str) -> Path:
+        """
+        Resolve thư mục của brand, chặn path traversal.
+
+        MỌI method nhận brand_id từ user PHẢI đi qua đây.
+        """
+        validate_id(brand_id, "brand_id")
+        return safe_join(BRANDS_DIR, brand_id)
+
+    def _doc_path(self, brand_id: str, doc_path: str) -> Path:
+        """
+        Resolve đường dẫn document trong brand, chặn path traversal.
+
+        doc_path có thể chứa thư mục con ('products/foo.md') nhưng không
+        được thoát ra khỏi thư mục brand.
+        """
+        brand_dir = self._brand_dir(brand_id)
+        return safe_join(brand_dir, doc_path)
+
     def list_brands(self) -> list[dict]:
         """List all brands with metadata and document counts."""
         brands = []
@@ -34,6 +54,9 @@ class BrandManager:
             return brands
 
         for brand_dir in sorted(BRANDS_DIR.iterdir()):
+            # Bỏ qua thư mục có tên không hợp lệ (không thể truy cập qua API)
+            if not is_valid_id(brand_dir.name):
+                continue
             if brand_dir.is_dir() and not brand_dir.name.startswith("_"):
                 meta = self._load_brand_meta(brand_dir.name)
                 if meta:
@@ -45,7 +68,7 @@ class BrandManager:
 
     def get_brand(self, brand_id: str) -> Optional[dict]:
         """Get brand metadata + list of all documents."""
-        brand_dir = BRANDS_DIR / brand_id
+        brand_dir = self._brand_dir(brand_id)
         if not brand_dir.exists():
             return None
 
@@ -81,7 +104,7 @@ class BrandManager:
         icon: str = "📦",
     ) -> dict:
         """Create a new brand with default template files."""
-        brand_dir = BRANDS_DIR / brand_id
+        brand_dir = self._brand_dir(brand_id)
         brand_dir.mkdir(parents=True, exist_ok=True)
 
         # Create subdirectories
@@ -151,7 +174,7 @@ class BrandManager:
 
     def delete_brand(self, brand_id: str) -> bool:
         """Delete a brand and all its knowledge."""
-        brand_dir = BRANDS_DIR / brand_id
+        brand_dir = self._brand_dir(brand_id)
         if brand_dir.exists():
             shutil.rmtree(brand_dir)
             return True
@@ -180,7 +203,7 @@ class BrandManager:
 
     def get_document(self, brand_id: str, doc_path: str) -> Optional[str]:
         """Get document content."""
-        file_path = BRANDS_DIR / brand_id / doc_path
+        file_path = self._doc_path(brand_id, doc_path)
         if file_path.exists() and file_path.suffix == ".md":
             return file_path.read_text(encoding="utf-8")
         return None
@@ -190,7 +213,7 @@ class BrandManager:
         if not doc_path.endswith(".md"):
             doc_path += ".md"
 
-        file_path = BRANDS_DIR / brand_id / doc_path
+        file_path = self._doc_path(brand_id, doc_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
 
@@ -203,9 +226,9 @@ class BrandManager:
         return True
 
     def delete_document(self, brand_id: str, doc_path: str) -> bool:
-        """Delete a document."""
-        file_path = BRANDS_DIR / brand_id / doc_path
-        if file_path.exists():
+        """Delete a document. Chỉ xóa được file .md trong thư mục brand."""
+        file_path = self._doc_path(brand_id, doc_path)
+        if file_path.is_file() and file_path.suffix == ".md":
             file_path.unlink()
             return True
         return False
@@ -214,14 +237,14 @@ class BrandManager:
 
     def get_voice_profile(self, brand_id: str) -> Optional[dict]:
         """Get voice profile for a brand."""
-        file_path = BRANDS_DIR / brand_id / "voice_profile.json"
+        file_path = self._brand_dir(brand_id) / "voice_profile.json"
         if file_path.exists():
             return json.loads(file_path.read_text(encoding="utf-8"))
         return None
 
     def update_voice_profile(self, brand_id: str, profile: dict) -> bool:
         """Update voice profile for a brand."""
-        file_path = BRANDS_DIR / brand_id / "voice_profile.json"
+        file_path = self._brand_dir(brand_id) / "voice_profile.json"
         if not file_path.parent.exists():
             return False
         file_path.write_text(
@@ -234,7 +257,7 @@ class BrandManager:
 
     def get_knowledge_preview(self, brand_id: str) -> Optional[dict]:
         """Get full knowledge preview with token estimate."""
-        brand_dir = BRANDS_DIR / brand_id
+        brand_dir = self._brand_dir(brand_id)
         if not brand_dir.exists():
             return None
 
@@ -290,13 +313,13 @@ class BrandManager:
     # === Internal helpers ===
 
     def _load_brand_meta(self, brand_id: str) -> Optional[dict]:
-        meta_path = BRANDS_DIR / brand_id / "brand.json"
+        meta_path = self._brand_dir(brand_id) / "brand.json"
         if meta_path.exists():
             return json.loads(meta_path.read_text(encoding="utf-8"))
         return None
 
     def _save_brand_meta(self, brand_id: str, meta: dict):
-        meta_path = BRANDS_DIR / brand_id / "brand.json"
+        meta_path = self._brand_dir(brand_id) / "brand.json"
         meta_path.write_text(
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",

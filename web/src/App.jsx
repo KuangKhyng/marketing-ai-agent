@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import AuthGate from './components/AuthGate';
 import Layout from './components/Layout';
 import InputPage from './pages/InputPage';
 import BriefReviewPage from './pages/BriefReviewPage';
@@ -55,25 +56,27 @@ function CampaignFlow({ onReset }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<CampaignFlow />} />
-        <Route path="/knowledge" element={
-          <Layout showCampaignNav={false}>
-            <BrandsPage />
-          </Layout>
-        } />
-        <Route path="/knowledge/:brandId" element={
-          <Layout showCampaignNav={false}>
-            <BrandDetailPage />
-          </Layout>
-        } />
-        <Route path="/knowledge/:brandId/edit/*" element={
-          <Layout showCampaignNav={false}>
-            <DocumentEditorPage />
-          </Layout>
-        } />
-      </Routes>
-    </BrowserRouter>
+    <AuthGate>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<CampaignFlow />} />
+          <Route path="/knowledge" element={
+            <Layout showCampaignNav={false}>
+              <BrandsPage />
+            </Layout>
+          } />
+          <Route path="/knowledge/:brandId" element={
+            <Layout showCampaignNav={false}>
+              <BrandDetailPage />
+            </Layout>
+          } />
+          <Route path="/knowledge/:brandId/edit/*" element={
+            <Layout showCampaignNav={false}>
+              <DocumentEditorPage />
+            </Layout>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </AuthGate>
   );
 }

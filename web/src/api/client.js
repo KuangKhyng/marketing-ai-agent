@@ -4,10 +4,46 @@ const baseURL = import.meta.env.DEV
   ? 'http://localhost:8000/api'
   : '/api';
 
+const STORAGE_KEY = 'mkt_access_key';
+
+export const getAccessKey = () => localStorage.getItem(STORAGE_KEY) || '';
+export const setAccessKey = (key) => localStorage.setItem(STORAGE_KEY, key);
+export const clearAccessKey = () => localStorage.removeItem(STORAGE_KEY);
+
 const api = axios.create({
   baseURL,
   timeout: 300000, // 5 min — LLM calls can be very slow on free tier
 });
+
+// Gắn access key vào mọi request
+api.interceptors.request.use((config) => {
+  const key = getAccessKey();
+  if (key) config.headers['X-API-Key'] = key;
+  return config;
+});
+
+// Key sai/hết hạn → xóa key và quay về màn hình đăng nhập.
+// Bỏ qua với request có cờ _skipAuthHandler (dùng khi đang verify key mới).
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.status === 401 && !error.config?._skipAuthHandler) {
+      clearAccessKey();
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const authAPI = {
+  // Public — không cần key
+  status: () => api.get('/auth/status', { _skipAuthHandler: true }),
+  // Kiểm tra một key cụ thể mà không lưu trước
+  verify: (key) => api.get('/auth/verify', {
+    headers: { 'X-API-Key': key },
+    _skipAuthHandler: true,
+  }),
+};
 
 export const campaignAPI = {
   start: (input) => api.post('/campaigns/start', input),

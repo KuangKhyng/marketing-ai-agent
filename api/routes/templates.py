@@ -12,10 +12,17 @@ from pydantic import BaseModel
 from typing import Optional
 
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import safe_join, validate_id
 
 router = APIRouter()
 
 TEMPLATES_DIR = PROJECT_ROOT / "knowledge_base" / "_templates"
+
+
+def _template_path(template_id: str) -> Path:
+    """Resolve file template, chặn path traversal qua template_id."""
+    validate_id(template_id, "template_id")
+    return safe_join(TEMPLATES_DIR, f"{template_id}.json")
 
 
 class TemplateCreate(BaseModel):
@@ -52,7 +59,7 @@ def list_templates():
 @router.get("/{template_id}")
 def get_template(template_id: str):
     """Get a single template with full brief data."""
-    path = TEMPLATES_DIR / f"{template_id}.json"
+    path = _template_path(template_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Template not found")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -72,7 +79,7 @@ def create_template(data: TemplateCreate):
         "created_at": datetime.now().isoformat(),
     }
 
-    path = TEMPLATES_DIR / f"{template_id}.json"
+    path = _template_path(template_id)
     path.write_text(json.dumps(template, ensure_ascii=False, indent=2), encoding="utf-8")
     return template
 
@@ -80,7 +87,7 @@ def create_template(data: TemplateCreate):
 @router.delete("/{template_id}")
 def delete_template(template_id: str):
     """Delete a template."""
-    path = TEMPLATES_DIR / f"{template_id}.json"
+    path = _template_path(template_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Template not found")
     path.unlink()
