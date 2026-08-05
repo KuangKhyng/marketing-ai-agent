@@ -101,9 +101,9 @@ export default function AuthGate({ children }) {
     <Frame>
       <form onSubmit={handleSubmit} className="w-full max-w-[340px]">
         <div className="font-copy text-[1.375rem] font-semibold leading-tight">
-          Xưởng Chiến Dịch
+          Campaign Engine
         </div>
-        <div className="t-label mt-1.5 mb-7">Campaign Engine</div>
+        <div className="t-label mt-1.5 mb-7">Nội dung đa kênh</div>
 
         <label htmlFor="access-key" className="t-label block mb-2">Access key</label>
         <input

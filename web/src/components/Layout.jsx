@@ -43,10 +43,10 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
                     style={{ background: 'var(--cham)', boxShadow: '0 0 12px var(--cham-glow)' }} />
               <span className="text-[1.0625rem] font-light tracking-tight"
                     style={{ fontFamily: 'var(--font-display)' }}>
-                Xưởng Chiến Dịch
+                Campaign Engine
               </span>
             </div>
-            <div className="t-label mt-2 md:ml-4">Campaign Engine</div>
+            <div className="t-label mt-2 md:ml-4">Nội dung đa kênh</div>
           </button>
 
           <div className="flex md:hidden items-center gap-1.5">
