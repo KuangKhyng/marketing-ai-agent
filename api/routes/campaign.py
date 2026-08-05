@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from threading import Lock
 from pathlib import Path
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import safe_join, validate_id
 
 _SESSIONS_DIR = PROJECT_ROOT / "outputs"
 
@@ -62,7 +63,8 @@ class SessionStore:
         self.set(run_id, runner)
 
     def _state_path(self, run_id: str) -> Path:
-        return _SESSIONS_DIR / run_id / "state.pkl"
+        validate_id(run_id, "run_id")
+        return safe_join(_SESSIONS_DIR, run_id, "state.pkl")
 
     def _persist(self, run_id: str, runner: PipelineRunner):
         path = self._state_path(run_id)
@@ -437,9 +439,9 @@ def approve_final(run_id: str):
 def download_output(run_id: str, format: str):
     """Download output in specified format (md, json)."""
     from fastapi.responses import FileResponse
-    from src.config.settings import PROJECT_ROOT
 
-    run_dir = PROJECT_ROOT / "outputs" / run_id
+    validate_id(run_id, "run_id")
+    run_dir = safe_join(PROJECT_ROOT / "outputs", run_id)
     if format == "md":
         path = run_dir / "content.md"
     elif format == "json":

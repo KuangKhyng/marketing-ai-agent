@@ -22,6 +22,7 @@ from hashlib import md5
 
 from src.models.brief import CampaignBrief
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import InvalidPathError, safe_join, validate_id
 
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
@@ -85,8 +86,13 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
 
     # === BRAND-SPECIFIC MODE ===
     if brand_id:
-        brand_dir = BRANDS_DIR / brand_id
-        if not brand_dir.exists():
+        try:
+            validate_id(brand_id, "brand_id")
+            brand_dir = safe_join(BRANDS_DIR, brand_id)
+        except InvalidPathError:
+            brand_dir = None
+
+        if brand_dir is None or not brand_dir.exists():
             # Brand not found — fall back to generic
             context["mode"] = "generic"
             context["voice_profile"] = _get_generic_voice_profile()
