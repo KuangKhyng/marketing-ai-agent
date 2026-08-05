@@ -1,13 +1,27 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Check, Edit, Loader2, Database, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import LoadingOverlay from '../components/LoadingOverlay';
+
+const GOAL_LABEL = {
+  awareness: 'Nhận diện',
+  engagement: 'Tương tác',
+  lead_generation: 'Thu khách tiềm năng',
+  conversion: 'Chuyển đổi mua hàng',
+  retention: 'Giữ chân khách',
+};
+
+const CHANNELS = [
+  { v: 'facebook', l: 'Facebook' },
+  { v: 'instagram', l: 'Instagram' },
+  { v: 'tiktok', l: 'TikTok' },
+];
 
 export default function BriefReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
   const brief = campaignData?.brief;
-  const context_info = campaignData?.context_info;
+  const contextInfo = campaignData?.context_info;
   const [editMode, setEditMode] = useState(false);
   const [editedBrief, setEditedBrief] = useState(brief ? {
     goal: brief.goal,
@@ -27,174 +41,148 @@ export default function BriefReviewPage({ campaignData, setCampaignData, setPhas
       setCampaignData(data);
       setPhase('strategy_review');
     } catch (err) {
-      showToast('Error: ' + (err.response?.data?.detail || err.message));
+      showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex justify-between items-end mb-8">
-        <div>
-          <h2 className="text-4xl font-bold mb-3 tracking-tight">Parsed Brief</h2>
-          <p className="text-lg opacity-70">
-            AI đã phân tích yêu cầu của bạn. Hãy kiểm tra lại trước khi tạo chiến lược.
-          </p>
-        </div>
-      </div>
+    <div className="rise">
+      <header className="mb-8">
+        <h1 className="t-page mb-2.5">Duyệt brief</h1>
+        <p className="t-lede">
+          Đây là cách hệ thống hiểu đề bài của bạn. Sai chỗ nào thì sửa ngay — mọi bước sau đều dựa vào đây.
+        </p>
+      </header>
 
-      {/* Brief Display */}
       {!editMode ? (
-        <div className="glass-panel p-8 rounded-2xl mb-8 grid grid-cols-1 md:grid-cols-2 gap-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5">
-             <Check className="w-64 h-64" />
+        <dl className="sheet mb-6">
+          <Row label="Mục tiêu" value={GOAL_LABEL[brief.goal] || brief.goal} />
+          <Row label="Sản phẩm / dịch vụ" value={brief.offer.product_or_service} />
+          <Row label="Đối tượng" value={brief.audience.persona_description} />
+          <Row
+            label="Kênh đăng"
+            value={brief.channels.map(c => CHANNELS.find(x => x.v === c)?.l || c).join(' · ')}
+          />
+          <Row label="Thông điệp cốt lõi" value={brief.offer.key_message} />
+          <Row label="Kêu gọi hành động" value={brief.offer.cta} last />
+        </dl>
+      ) : (
+        <div className="sheet p-6 mb-6 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div>
+            <label htmlFor="e-goal" className="t-label block mb-2">Mục tiêu</label>
+            <select
+              id="e-goal"
+              value={editedBrief.goal}
+              onChange={e => setEditedBrief({ ...editedBrief, goal: e.target.value })}
+              className="field"
+            >
+              {Object.entries(GOAL_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </div>
-          <div className="relative z-10">
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Mục tiêu</p>
-            <p className="text-lg font-medium mb-6">{brief.goal}</p>
 
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Sản phẩm / Dịch vụ</p>
-            <p className="text-lg font-medium mb-6">{brief.offer.product_or_service}</p>
-
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Đối tượng (Audience)</p>
-            <p className="text-lg font-medium">{brief.audience.persona_description}</p>
-          </div>
-          <div className="relative z-10">
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Channels</p>
-            <div className="flex gap-2 mb-6">
-              {brief.channels.map(c => (
-                <span key={c} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg bg-gradient-to-r from-purple-500/20 to-indigo-500/20 border border-purple-500/30 text-purple-200">{c}</span>
+          <div>
+            <p className="t-label mb-2">Kênh đăng</p>
+            <div className="flex flex-wrap gap-2">
+              {CHANNELS.map(ch => (
+                <button
+                  key={ch.v}
+                  onClick={() => {
+                    const channels = editedBrief.channels.includes(ch.v)
+                      ? editedBrief.channels.filter(c => c !== ch.v)
+                      : [...editedBrief.channels, ch.v];
+                    setEditedBrief({ ...editedBrief, channels });
+                  }}
+                  data-on={editedBrief.channels.includes(ch.v)}
+                  className="chip"
+                >
+                  {ch.l}
+                </button>
               ))}
             </div>
-
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Key Message</p>
-            <p className="text-lg font-medium mb-6">{brief.offer.key_message}</p>
-
-            <p className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">CTA</p>
-            <p className="text-lg font-medium text-green-400">{brief.offer.cta}</p>
           </div>
-        </div>
-      ) : (
-        <div className="glass-panel p-8 rounded-2xl mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="col-span-1 md:col-span-2 flex items-center gap-2 text-sm text-yellow-400 bg-yellow-400/10 p-3 rounded-lg border border-yellow-400/20">
-              <Edit className="w-4 h-4" /> Editing mode enabled
-            </div>
-             {/* Goal */}
-             <div>
-              <label className="text-sm font-medium mb-2 block opacity-80">Mục tiêu</label>
-              <select value={editedBrief.goal} onChange={e => setEditedBrief({...editedBrief, goal: e.target.value})}
-                      className="w-full p-4 rounded-xl text-sm glass-input text-white [&>option]:bg-[#1a1a2e]">
-                <option value="awareness">Awareness</option>
-                <option value="engagement">Engagement</option>
-                <option value="lead_generation">Lead Generation</option>
-                <option value="conversion">Conversion</option>
-              </select>
-            </div>
 
-            {/* Channels */}
-            <div>
-              <label className="text-sm font-medium mb-2 block opacity-80">Channels</label>
-              <div className="flex gap-2">
-                {['facebook', 'instagram', 'tiktok'].map(ch => (
-                  <button key={ch} onClick={() => {
-                    const channels = editedBrief.channels.includes(ch)
-                      ? editedBrief.channels.filter(c => c !== ch)
-                      : [...editedBrief.channels, ch];
-                    setEditedBrief({...editedBrief, channels});
-                  }}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
-                    editedBrief.channels.includes(ch) 
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md' 
-                      : 'bg-[#252540]/60 text-gray-400 border border-white/5'
-                  }`}>
-                    {ch}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <InputField label="Sản phẩm/Dịch vụ" value={editedBrief.product} onChange={v => setEditedBrief({...editedBrief, product: v})} />
-            <InputField label="Thông điệp chính" value={editedBrief.key_message} onChange={v => setEditedBrief({...editedBrief, key_message: v})} />
-            <InputField label="Đối tượng" value={editedBrief.audience} onChange={v => setEditedBrief({...editedBrief, audience: v})} />
-            <InputField label="CTA" value={editedBrief.cta} onChange={v => setEditedBrief({...editedBrief, cta: v})} />
-          </div>
+          <EditField id="e-product" label="Sản phẩm / dịch vụ" value={editedBrief.product}
+                     onChange={v => setEditedBrief({ ...editedBrief, product: v })} />
+          <EditField id="e-msg" label="Thông điệp cốt lõi" value={editedBrief.key_message}
+                     onChange={v => setEditedBrief({ ...editedBrief, key_message: v })} />
+          <EditField id="e-aud" label="Đối tượng" value={editedBrief.audience}
+                     onChange={v => setEditedBrief({ ...editedBrief, audience: v })} />
+          <EditField id="e-cta" label="Kêu gọi hành động" value={editedBrief.cta}
+                     onChange={v => setEditedBrief({ ...editedBrief, cta: v })} />
         </div>
       )}
 
-      {/* Context Info Transparency */}
-      {context_info && (
-        <div className="glass-panel p-6 rounded-2xl mb-8 border border-blue-500/20 bg-blue-500/5">
-          <div className="flex items-center gap-2 mb-4 text-blue-400">
-            <Database className="w-5 h-5" />
-            <h3 className="font-bold text-sm tracking-widest uppercase">Knowledge Base Context Loaded</h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Mode</p>
-              <p className="font-medium text-white capitalize">{context_info.mode}</p>
+      {/* Nguồn kiến thức đã nạp — minh bạch để người dùng biết AI đang dựa vào gì */}
+      {contextInfo && (
+        <section className="mb-8">
+          <p className="t-label mb-2.5">Kiến thức đã nạp</p>
+          <div className="sheet px-5 py-4">
+            <div className="flex flex-wrap gap-x-8 gap-y-2 mb-3">
+              <Meta label="Chế độ" value={contextInfo.mode === 'branded' ? 'Theo brand' : 'Không brand'} />
+              {contextInfo.brand_name && <Meta label="Brand" value={contextInfo.brand_name} />}
+              <Meta label="Số tài liệu" value={contextInfo.loaded_docs?.length || 0} />
             </div>
-            {context_info.brand_name && (
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Brand</p>
-                <p className="font-medium text-white">{context_info.brand_name}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Docs Loaded</p>
-              <p className="font-medium text-white">{context_info.loaded_docs?.length || 0}</p>
-            </div>
-          </div>
-          {context_info.loaded_docs?.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Sources File</p>
-              <div className="flex flex-wrap gap-2">
-                {context_info.loaded_docs.map((doc, idx) => (
-                  <span key={idx} className="px-2 py-1 bg-[#1a1a2e] border border-white/5 rounded-lg text-xs text-gray-300">
+            {contextInfo.loaded_docs?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-rule">
+                {contextInfo.loaded_docs.map((doc, i) => (
+                  <span key={i} className="font-data text-[0.75rem] text-ink-2 bg-inset px-1.5 py-0.5 rounded-[2px]">
                     {doc}
                   </span>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       )}
 
-      {/* Buttons */}
-      <div className="flex gap-4">
-        <button onClick={() => setPhase('input')} disabled={loading}
-                className="px-6 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
-          <ArrowLeft className="w-5 h-5" />
-          Quay lại
+      <div className="flex flex-wrap gap-2.5 pt-6 border-t border-rule">
+        <button onClick={() => setPhase('input')} disabled={loading} className="btn btn-quiet">
+          <ArrowLeft className="w-4 h-4" /> Đề bài
         </button>
-        <button onClick={() => setEditMode(!editMode)} disabled={loading}
-                className="px-8 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer btn-secondary">
-          <Edit className="w-5 h-5" />
-          {editMode ? 'Hủy Sửa' : 'Sửa Brief'}
+        <button onClick={() => setEditMode(!editMode)} disabled={loading} className="btn btn-default">
+          {editMode ? 'Xong' : 'Sửa brief'}
         </button>
-        <button onClick={handleApprove} disabled={loading}
-                className="flex-1 py-4 rounded-xl text-base font-semibold flex items-center justify-center gap-2 cursor-pointer bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all">
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-          Approve — Tạo Strategy
+        <button onClick={handleApprove} disabled={loading} className="btn btn-primary">
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {loading ? 'Đang dựng chiến lược' : 'Duyệt, dựng chiến lược'}
         </button>
       </div>
+
       <LoadingOverlay
         show={loading}
-        title="Đang tạo strategy..."
-        description="AI đang phân tích brief và thiết kế chiến lược campaign."
+        title="Đang dựng chiến lược"
+        description="Hệ thống đang đào insight từ đối tượng rồi mới lên hướng tiếp cận."
       />
       <Toast />
     </div>
   );
 }
 
-function InputField({ label, value, onChange }) {
+function Row({ label, value, last }) {
+  return (
+    <div className={`grid grid-cols-1 sm:grid-cols-[168px_1fr] gap-1 sm:gap-5 px-5 py-3.5 ${last ? '' : 'border-b border-rule'}`}>
+      <dt className="t-label sm:pt-[3px]">{label}</dt>
+      <dd className="text-[0.9375rem] leading-relaxed text-ink">{value || <span className="text-ink-3">—</span>}</dd>
+    </div>
+  );
+}
+
+function Meta({ label, value }) {
   return (
     <div>
-      <label className="text-sm font-medium mb-2 block opacity-80">{label}</label>
-      <input value={value} onChange={e => onChange(e.target.value)}
-             className="w-full p-4 rounded-xl text-sm glass-input" />
+      <p className="t-label">{label}</p>
+      <p className="text-[0.875rem] mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function EditField({ id, label, value, onChange }) {
+  return (
+    <div>
+      <label htmlFor={id} className="t-label block mb-2">{label}</label>
+      <input id={id} value={value} onChange={e => onChange(e.target.value)} className="field" />
     </div>
   );
 }

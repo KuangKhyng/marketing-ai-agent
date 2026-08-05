@@ -1,22 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export function useToast() {
   const [toast, setToast] = useState(null);
 
   const show = (message, type = 'error') => {
-    setToast({ message, type });
+    setToast({ message, type, id: Date.now() });
     setTimeout(() => setToast(null), 5000);
   };
 
   const Toast = () => {
     if (!toast) return null;
-    
+
+    const accent =
+      toast.type === 'success' ? 'var(--pass)' :
+      toast.type === 'error'   ? 'var(--fail)' : 'var(--cham)';
+
     return (
-      <div className={`fixed bottom-6 right-6 z-50 px-6 py-3 rounded-xl text-sm font-medium shadow-2xl animate-in slide-in-from-bottom-4 ${
-        toast.type === 'error' ? 'bg-red-500/90 text-white' :
-        toast.type === 'success' ? 'bg-emerald-500/90 text-white' :
-        'bg-purple-500/90 text-white'
-      }`}>
+      <div
+        role="status"
+        aria-live="polite"
+        className="rise fixed bottom-5 right-5 z-50 max-w-sm sheet px-4 py-3 text-[0.875rem] leading-snug"
+        style={{ borderLeft: `2px solid ${accent}`, boxShadow: '0 6px 20px rgba(0,0,0,.09)' }}
+      >
         {toast.message}
       </div>
     );

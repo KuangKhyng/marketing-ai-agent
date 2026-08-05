@@ -1,63 +1,56 @@
 import { useState } from 'react';
 import { campaignAPI } from '../api/client';
-import { Download, FileText, Code2, Sparkles, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, Copy, ChevronDown } from 'lucide-react';
 import { useToast } from '../components/Toast';
+
+const CHANNEL_LABEL = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok' };
+const DELIVERABLE_LABEL = {
+  post: 'Bài đăng',
+  carousel: 'Carousel',
+  reels_script: 'Kịch bản Reels',
+  short_video_script: 'Kịch bản video ngắn',
+  story: 'Story',
+};
 
 function formatPieceForCopy(piece) {
   const parts = [];
   if (piece.hook) parts.push(piece.hook);
   parts.push(piece.body);
   if (piece.cta_text) parts.push(`\n${piece.cta_text}`);
-  if (piece.hashtags?.length > 0) {
-    parts.push(`\n${piece.hashtags.join(' ')}`);
-  }
+  if (piece.hashtags?.length > 0) parts.push(`\n${piece.hashtags.join(' ')}`);
   return parts.join('\n\n');
 }
 
-function CopyButton({ text, label }) {
+function CopyButton({ text, label = 'Sao chép', className = 'btn btn-default !py-2 !px-3 !text-[13px]' }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      document.body.appendChild(textarea);
-      textarea.select();
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
       document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      document.body.removeChild(ta);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <button onClick={handleCopy}
-            className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition-all cursor-pointer border ${
-              copied 
-                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' 
-                : 'bg-white/5 border-white/10 hover:border-purple-500/40 hover:bg-purple-500/10 text-gray-300'
-            }`}>
-      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-      {copied ? 'Đã copy!' : label}
+    <button onClick={handleCopy} className={className}>
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? 'Đã chép' : label}
     </button>
   );
 }
 
-const CHANNEL_ICONS = {
-  facebook: '📘',
-  instagram: '📸',
-  tiktok: '🎵',
-};
-
 export default function ExportPage({ campaignData, setPhase }) {
   const { showToast, Toast } = useToast();
   const [downloading, setDownloading] = useState(false);
-  const [expandedPiece, setExpandedPiece] = useState(null);
+  const [expanded, setExpanded] = useState(null);
 
   if (!campaignData) return null;
   const runId = campaignData.run_id;
@@ -74,62 +67,69 @@ export default function ExportPage({ campaignData, setPhase }) {
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
-    } catch (err) {
-      showToast('Lỗi khi tải file. Vui lòng thử lại.');
+      window.URL.revokeObjectURL(url);
+    } catch {
+      showToast('Không tải được file. Thử lại sau.');
     } finally {
       setDownloading(false);
     }
   };
 
+  const allText = pieces
+    .map(p => `=== ${CHANNEL_LABEL[p.channel] || p.channel} — ${DELIVERABLE_LABEL[p.deliverable] || p.deliverable} ===\n\n${formatPieceForCopy(p)}`)
+    .join('\n\n---\n\n');
+
   return (
-    <div className="animate-in zoom-in-95 duration-1000 flex flex-col items-center">
-      <div className="w-32 h-32 bg-gradient-to-tr from-purple-500 to-emerald-400 rounded-full blur-3xl absolute opacity-20 animate-pulse"></div>
-      
-      <div className="bg-emerald-500/20 w-24 h-24 rounded-full flex items-center justify-center mb-8 border border-emerald-500/40 relative z-10 shadow-[0_0_50px_rgba(16,185,129,0.3)]">
-        <Sparkles className="w-12 h-12 text-emerald-400" />
-      </div>
+    <div className="rise">
+      <header className="mb-8">
+        <span className="tag tag-pass mb-3">Hoàn tất</span>
+        <h1 className="t-page mb-2.5">Bàn giao</h1>
+        <p className="t-lede">
+          Sao chép từng bài để đăng, hoặc tải cả gói về lưu.
+        </p>
+        <p className="t-data mt-2">Mã chiến dịch {runId}</p>
+      </header>
 
-      <h2 className="text-5xl font-black mb-4 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400 relative z-10">
-        Campaign Ready!
-      </h2>
-      <p className="text-xl mb-8 opacity-80 relative z-10 max-w-lg text-center">
-        Chiến dịch đã sẵn sàng. Copy trực tiếp hoặc download assets.
-      </p>
-
-
-      {/* Smart Copy Section */}
       {pieces.length > 0 && (
-        <div className="w-full max-w-2xl relative z-10 mb-10">
-          <h3 className="text-lg font-bold mb-4 uppercase tracking-widest text-purple-300">📋 Smart Copy</h3>
-          <div className="space-y-3">
+        <section className="mb-8">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="t-label">Nội dung ({pieces.length} bài)</p>
+            <CopyButton text={allText} label="Chép tất cả" />
+          </div>
+
+          <div className="sheet">
             {pieces.map((piece, i) => {
               const copyText = formatPieceForCopy(piece);
-              const icon = CHANNEL_ICONS[piece.channel] || '📄';
-              const isExpanded = expandedPiece === i;
+              const isOpen = expanded === i;
               return (
-                <div key={i} className="glass-panel rounded-2xl overflow-hidden">
-                  <div className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{icon}</span>
-                      <div>
-                        <p className="font-semibold text-sm">
-                          {piece.channel.toUpperCase()} — {piece.deliverable.replace('_', ' ')}
-                        </p>
-                        <p className="text-xs opacity-50">{piece.word_count} words</p>
-                      </div>
+                <div key={i} className={i < pieces.length - 1 ? 'border-b border-rule' : ''}>
+                  <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+                    <div className="min-w-0">
+                      <p className="text-[0.9375rem] font-medium truncate">
+                        {CHANNEL_LABEL[piece.channel] || piece.channel}
+                        <span className="text-ink-3 font-normal">
+                          {' · '}{DELIVERABLE_LABEL[piece.deliverable] || piece.deliverable}
+                        </span>
+                      </p>
+                      <p className="t-data num mt-0.5">{piece.word_count} từ</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <CopyButton text={copyText} label="Copy" />
-                      <button onClick={() => setExpandedPiece(isExpanded ? null : i)}
-                              className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <CopyButton text={copyText} />
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : i)}
+                        aria-expanded={isOpen}
+                        aria-label={isOpen ? 'Thu gọn' : 'Xem trước'}
+                        className="btn btn-quiet !py-2 !px-2"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                       </button>
                     </div>
                   </div>
-                  {isExpanded && (
-                    <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="p-4 rounded-xl bg-[#0f0f1a]/60 border border-white/5 text-sm whitespace-pre-wrap leading-relaxed text-gray-300 max-h-60 overflow-y-auto">
-                        {copyText}
+
+                  {isOpen && (
+                    <div className="px-5 pb-5 rise">
+                      <div className="inset px-4 py-3.5 max-h-72 overflow-y-auto">
+                        <p className="font-copy text-[1rem] leading-[1.75] whitespace-pre-wrap">{copyText}</p>
                       </div>
                     </div>
                   )}
@@ -137,35 +137,27 @@ export default function ExportPage({ campaignData, setPhase }) {
               );
             })}
           </div>
-          {/* Copy All */}
-          <div className="mt-3">
-            <CopyButton 
-              text={pieces.map(p => `=== ${p.channel.toUpperCase()} — ${p.deliverable} ===\n\n${formatPieceForCopy(p)}`).join('\n\n---\n\n')} 
-              label="📋 Copy All Pieces" 
-            />
-          </div>
-        </div>
+        </section>
       )}
 
-      {/* Download Section */}
-      <h3 className="text-lg font-bold mb-6 uppercase tracking-widest text-purple-300 relative z-10">📥 Download Assets</h3>
-      <div className="flex justify-center gap-4 relative z-10">
-        <button onClick={() => handleDownload('md')} disabled={downloading}
-                className="px-8 py-4 rounded-xl text-base font-bold cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/20 bg-gradient-to-r from-purple-600 to-indigo-600 border border-purple-500/50 text-white flex items-center gap-2">
-          <FileText className="w-5 h-5"/>
-          Markdown (.md)
-        </button>
-        <button onClick={() => handleDownload('json')} disabled={downloading}
-                className="px-8 py-4 rounded-xl text-base font-bold cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg glass-panel flex items-center gap-2 text-white/90">
-          <Code2 className="w-5 h-5" />
-          JSON Payload
+      <section className="mb-9">
+        <p className="t-label mb-2.5">Tải về</p>
+        <div className="flex flex-wrap gap-2.5">
+          <button onClick={() => handleDownload('md')} disabled={downloading} className="btn btn-default">
+            Markdown
+          </button>
+          <button onClick={() => handleDownload('json')} disabled={downloading} className="btn btn-default">
+            JSON
+          </button>
+        </div>
+      </section>
+
+      <div className="pt-6 border-t border-rule">
+        <button onClick={() => setPhase('input')} className="btn btn-primary">
+          Bắt đầu chiến dịch mới
         </button>
       </div>
-      
-      <button onClick={() => { setPhase('input'); }}
-              className="mt-16 text-sm font-semibold opacity-60 hover:opacity-100 transition-opacity border-b border-transparent hover:border-white pb-1 relative z-10 cursor-pointer">
-        + Bắt đầu Campaign mới
-      </button>
+
       <Toast />
     </div>
   );

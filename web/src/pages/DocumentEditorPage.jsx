@@ -1,62 +1,59 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useToast } from '../components/Toast';
 
 const TEMPLATES = {
-  'identity': `# [Tên Brand]
+  identity: `# [Tên brand]
 
-## Brand Identity
-(Mô tả brand — brand là gì, làm gì, tại sao tồn tại)
+## Brand là gì
+(Brand làm gì, cho ai, vì sao tồn tại)
 
-## Mission
-(Sứ mệnh — 1-2 câu)
+## Sứ mệnh
+(1–2 câu)
 
-## Vision
-(Tầm nhìn)
+## Điểm khác biệt
+(Điều gì khiến brand khác với đối thủ)
 
-## Unique Selling Proposition (USP)
-(Điều gì khiến brand khác biệt)
-
-## Brand Values
+## Giá trị cốt lõi
 - (Giá trị 1)
 - (Giá trị 2)
-- (Giá trị 3)
 
-## Brand Personality
-(Brand giống ai? Đặc điểm tính cách)
+## Tính cách brand
+(Nếu brand là một người thì đó là người thế nào)
 `,
-  'tone_of_voice': `# Tone of Voice
+  tone_of_voice: `# Giọng điệu
 
-## Overall Tone
-(casual/formal/friendly/authoritative/...)
+## Tổng thể
+(Thân mật / trang trọng / gần gũi / dứt khoát…)
 
-## Do's
+## Nên
 - (Nên viết kiểu gì)
 
-## Don'ts
-- (Không viết kiểu gì)
+## Không nên
+- (Tránh viết kiểu gì)
 
-## Preferred Words/Phrases
-- (Từ ưa thích)
+## Từ ngữ ưa dùng
+- (Từ 1)
 
-## Emoji Usage
-(Nhiều/vừa/ít/không dùng)
+## Emoji
+(Nhiều / vừa / ít / không dùng)
 
-## Example Posts (Good)
-(Paste 3-5 bài post mẫu)
+## Bài mẫu tốt
+(Dán 3–5 bài đã đăng và thấy hiệu quả)
 `,
-  'products': `# [Tên sản phẩm/dịch vụ]
+  products: `# [Tên sản phẩm hoặc dịch vụ]
 
 ## Mô tả ngắn
-(1-2 câu)
+(1–2 câu)
 
 ## Chi tiết
 (Mô tả đầy đủ)
 
-## Đối tượng
+## Dành cho ai
 (Ai nên dùng)
 
 ## Lợi ích chính
@@ -64,39 +61,38 @@ const TEMPLATES = {
 - (Lợi ích 2)
 
 ## Giá
-(Thông tin giá nếu có)
+(Nếu có)
 `,
-  'audience': `# Persona: [Tên persona]
+  audience: `# Chân dung: [Tên nhóm]
 
-## Demographics
-- Tuổi: 
+## Nhân khẩu
+- Tuổi:
 - Giới tính:
-- Vị trí:
+- Khu vực:
 - Nghề nghiệp:
 
-## Pain Points
-- (Pain point 1)
-- (Pain point 2)
+## Nỗi đau
+- (Nỗi đau 1)
+- (Nỗi đau 2)
 
-## Motivations
-- (Motivation 1)
+## Động lực
+- (Động lực 1)
 
-## Language Style
-(Họ nói chuyện như thế nào?)
+## Cách họ nói chuyện
+(Ngôn ngữ, từ lóng, cách xưng hô)
 
-## Where They Hang Out
-(Platform nào? Group nào?)
+## Họ ở đâu
+(Nền tảng nào, nhóm nào)
 `,
-  'policies': `# [Tên policy]
+  policies: `# [Tên quy định]
 
 ## Quy định
 - (Quy định 1)
-- (Quy định 2)
 
-## Claims được phép
+## Được phép nói
 - (Claim 1)
 
-## Claims KHÔNG được phép
+## Không được nói
 - (Claim cấm 1)
 `,
 };
@@ -107,29 +103,26 @@ function getTemplate(docPath) {
   if (docPath.startsWith('policies/')) return TEMPLATES.policies;
   if (docPath.includes('identity')) return TEMPLATES.identity;
   if (docPath.includes('tone')) return TEMPLATES.tone_of_voice;
-  return '# Document\n\n(Viết nội dung tại đây)\n';
+  return '# Tài liệu\n\n(Viết nội dung tại đây)\n';
 }
 
 export default function DocumentEditorPage() {
   const { brandId, '*': docPath } = useParams();
   const navigate = useNavigate();
+  const { showToast, Toast } = useToast();
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isNew, setIsNew] = useState(false);
 
-  useEffect(() => {
-    loadDocument();
-  }, [brandId, docPath]);
+  useEffect(() => { loadDocument(); }, [brandId, docPath]);
 
-  // Auto-save draft to localStorage every 30s
+  // Lưu nháp vào máy mỗi 30s để mất mạng không mất bài
   useEffect(() => {
     const key = `draft_${brandId}_${docPath}`;
     const interval = setInterval(() => {
-      if (content && content !== originalContent) {
-        localStorage.setItem(key, content);
-      }
+      if (content && content !== originalContent) localStorage.setItem(key, content);
     }, 30000);
     return () => clearInterval(interval);
   }, [content, originalContent, brandId, docPath]);
@@ -141,11 +134,8 @@ export default function DocumentEditorPage() {
       setOriginalContent(data.content);
       setIsNew(false);
     } catch {
-      // New document — check for draft or use template
-      const draftKey = `draft_${brandId}_${docPath}`;
-      const draft = localStorage.getItem(draftKey);
-      const template = draft || getTemplate(docPath);
-      setContent(template);
+      const draft = localStorage.getItem(`draft_${brandId}_${docPath}`);
+      setContent(draft || getTemplate(docPath));
       setOriginalContent('');
       setIsNew(true);
     } finally {
@@ -159,10 +149,10 @@ export default function DocumentEditorPage() {
       await brandsAPI.saveDoc(brandId, docPath, content);
       setOriginalContent(content);
       setIsNew(false);
-      // Clear draft
       localStorage.removeItem(`draft_${brandId}_${docPath}`);
+      showToast('Đã lưu.', 'success');
     } catch (err) {
-      alert('Lỗi khi lưu: ' + (err.response?.data?.detail || err.message));
+      showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     } finally {
       setSaving(false);
     }
@@ -171,67 +161,67 @@ export default function DocumentEditorPage() {
   const isDirty = content !== originalContent;
   const docName = docPath.split('/').pop().replace('.md', '').replace(/_/g, ' ');
 
-  if (loading) return <div className="text-center py-20 opacity-50">Đang tải...</div>;
+  if (loading) return <p className="text-ink-3 py-12">Đang tải…</p>;
 
   return (
-    <div className="animate-in fade-in duration-500 h-full flex flex-col" style={{ minHeight: 'calc(100vh - 120px)' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/knowledge/${brandId}`)} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
-            <ArrowLeft className="w-5 h-5" />
+    <div className="rise">
+      <header className="flex items-start justify-between gap-4 flex-wrap mb-6">
+        <div className="flex items-start gap-3 min-w-0">
+          <button
+            onClick={() => navigate(`/knowledge/${brandId}`)}
+            aria-label="Quay lại brand"
+            className="btn btn-quiet !p-2 mt-0.5"
+          >
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h2 className="text-lg font-bold capitalize">
-              {isNew ? '📝 New: ' : '📝 Editing: '}{docName}
-            </h2>
-            <p className="text-xs opacity-50">{docPath} {isDirty && <span className="text-yellow-400">· Unsaved changes</span>}</p>
+          <div className="min-w-0">
+            <h1 className="t-section capitalize truncate">{docName}</h1>
+            <p className="t-data mt-1 truncate">
+              {docPath}
+              {isNew && <span className="text-ink-3"> · tài liệu mới</span>}
+              {isDirty && <span style={{ color: 'var(--warn)' }}> · chưa lưu</span>}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={saveDocument} disabled={saving || !isDirty}
-                  className="px-4 py-2 rounded-xl text-sm font-medium btn-primary disabled:opacity-50 flex items-center gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? 'Đang lưu...' : 'Lưu'}
+        <div className="flex gap-2.5 shrink-0">
+          <button onClick={saveDocument} disabled={saving || !isDirty} className="btn btn-primary">
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {saving ? 'Đang lưu' : 'Lưu'}
           </button>
-          <button onClick={() => navigate(`/knowledge/${brandId}`)}
-                  className="px-4 py-2 rounded-xl text-sm btn-secondary">
-            Đóng
-          </button>
+          <button onClick={() => navigate(`/knowledge/${brandId}`)} className="btn btn-quiet">Đóng</button>
         </div>
-      </div>
+      </header>
 
-      {/* Split Editor */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
-        {/* Editor */}
+      {isNew && (
+        <p className="text-[0.875rem] text-ink-2 leading-relaxed mb-5 sheet px-4 py-3"
+           style={{ borderLeft: '2px solid var(--cham)' }}>
+          Đã điền sẵn dàn ý. Thay các phần trong ngoặc bằng thông tin thật — phần nào chưa có thì xoá dòng đó đi,
+          để trống còn hơn để chữ mẫu lọt vào nội dung.
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="flex flex-col">
-          <label className="text-xs font-bold uppercase tracking-wider mb-2 text-purple-400">Editor</label>
+          <p className="t-label mb-2">Soạn thảo</p>
           <textarea
             value={content}
             onChange={e => setContent(e.target.value)}
-            className="flex-1 p-4 rounded-xl text-sm glass-input resize-none font-mono leading-relaxed"
-            style={{ minHeight: '400px' }}
             spellCheck={false}
+            className="field font-data !text-[0.8125rem] !leading-[1.7] flex-1"
+            style={{ minHeight: '460px' }}
           />
         </div>
-        {/* Preview */}
         <div className="flex flex-col">
-          <label className="text-xs font-bold uppercase tracking-wider mb-2 text-green-400">Preview</label>
-          <div className="flex-1 p-4 rounded-xl overflow-auto prose prose-invert prose-sm max-w-none"
-               style={{ backgroundColor: 'rgba(15,15,26,0.6)', border: '1px solid var(--border)', minHeight: '400px' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <p className="t-label mb-2">Bản đọc</p>
+          <div className="inset px-5 py-4 overflow-auto flex-1" style={{ minHeight: '460px' }}>
+            <div className="md !text-[0.9375rem]">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Hint */}
-      {isNew && (
-        <div className="mt-4 p-3 rounded-xl text-xs flex items-start gap-2"
-             style={{ backgroundColor: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)' }}>
-          <span>💡</span>
-          <span>Template đã được tự động điền. Thay thế các phần trong ngoặc (...) bằng thông tin thật của brand.</span>
-        </div>
-      )}
+      <Toast />
     </div>
   );
 }

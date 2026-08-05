@@ -1,83 +1,375 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* ============================================================
+   BÀN BIÊN TẬP — design tokens
+   Mực trên giấy nguội. Chàm chỉ dùng cho tương tác, không trang trí.
+   Màu ngữ nghĩa (đạt / cảnh báo / cần sửa) tách riêng khỏi accent.
+   ============================================================ */
+
 :root {
-  --primary: #8b5cf6;
-  --primary-dark: #6d28d9;
-  --primary-glow: rgba(139, 92, 246, 0.5);
-  --bg-color: #0b0c10;
-  --surface: rgba(26, 26, 46, 0.7);
-  --surface-light: rgba(37, 37, 64, 0.8);
-  --text: #f3f4f6;
-  --text-muted: #9ca3af;
-  --gold: #fbbf24;
-  --success: #10b981;
-  --error: #ef4444;
-  --border: rgba(255, 255, 255, 0.1);
+  /* Nền & bề mặt */
+  --paper:        #f4f4f1;   /* nền trang — xám nguội, không ngả kem */
+  --sheet:        #ffffff;   /* tờ nội dung */
+  --inset:        #ebebe7;   /* vùng lõm: code, preview */
+
+  /* Mực */
+  --ink:          #16161a;
+  --ink-2:        #55554f;
+  --ink-3:        #86867e;
+
+  /* Kẻ */
+  --rule:         #d8d8d2;
+  --rule-strong:  #b9b9b1;
+
+  /* Chàm — accent duy nhất */
+  --cham:         #2f3e86;
+  --cham-hover:   #253168;
+  --cham-soft:    #e8eaf4;
+  --on-cham:      #ffffff;
+
+  /* Ngữ nghĩa */
+  --pass:         #3f6e52;
+  --pass-soft:    #e6efe9;
+  --warn:         #8a6d1f;
+  --warn-soft:    #f5eedd;
+  --fail:         #a33a2e;
+  --fail-soft:    #f7e8e6;
+
+  /* Chữ */
+  --font-ui:   'Be Vietnam Pro', system-ui, sans-serif;
+  --font-copy: 'Source Serif 4', Georgia, serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Hình học — góc gần vuông, kiểu ấn phẩm */
+  --r:    3px;
+  --r-lg: 5px;
+
+  color-scheme: light;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #131417;  --sheet: #1a1b1f;  --inset: #202126;
+    --ink: #e9e8e3;    --ink-2: #a8a79f;  --ink-3: #77766f;
+    --rule: #2c2d32;   --rule-strong: #3d3e44;
+    --cham: #8fa0ea;   --cham-hover: #a6b3f0;  --cham-soft: #23263a;  --on-cham: #101119;
+    --pass: #74a98a;   --pass-soft: #1b2721;
+    --warn: #c9a54e;   --warn-soft: #2a2418;
+    --fail: #d0776a;   --fail-soft: #2e1d1a;
+    color-scheme: dark;
+  }
+}
+
+/* Nút gạt theme phải thắng cả hai chiều */
+:root[data-theme='dark'] {
+  --paper: #131417;  --sheet: #1a1b1f;  --inset: #202126;
+  --ink: #e9e8e3;    --ink-2: #a8a79f;  --ink-3: #77766f;
+  --rule: #2c2d32;   --rule-strong: #3d3e44;
+  --cham: #8fa0ea;   --cham-hover: #a6b3f0;  --cham-soft: #23263a;  --on-cham: #101119;
+  --pass: #74a98a;   --pass-soft: #1b2721;
+  --warn: #c9a54e;   --warn-soft: #2a2418;
+  --fail: #d0776a;   --fail-soft: #2e1d1a;
+  color-scheme: dark;
+}
+
+/* Đăng ký token cho Tailwind. `inline` để utility phát ra var(),
+   nhờ vậy đổi theme là màu đổi ngay, không cần build lại. */
+@theme inline {
+  --color-paper:       var(--paper);
+  --color-sheet:       var(--sheet);
+  --color-inset:       var(--inset);
+  --color-ink:         var(--ink);
+  --color-ink-2:       var(--ink-2);
+  --color-ink-3:       var(--ink-3);
+  --color-rule:        var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-cham:        var(--cham);
+  --color-cham-soft:   var(--cham-soft);
+  --color-on-cham:     var(--on-cham);
+  --color-pass:        var(--pass);
+  --color-pass-soft:   var(--pass-soft);
+  --color-warn:        var(--warn);
+  --color-warn-soft:   var(--warn-soft);
+  --color-fail:        var(--fail);
+  --color-fail-soft:   var(--fail-soft);
+
+  --font-ui:   var(--font-ui);
+  --font-copy: var(--font-copy);
+  --font-data: var(--font-data);
+}
+
+/* ============================================================
+   Nền tảng
+   ============================================================ */
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
-  background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.15), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.1), transparent 25%);
-  color: var(--text);
-  font-family: 'Outfit', system-ui, sans-serif;
   margin: 0;
   min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;   /* 15px */
+  line-height: 1.55;      /* tối thiểu cho dấu tiếng Việt */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Glassmorphism utilities */
-.glass-panel {
-  background: var(--surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+::selection { background: var(--cham); color: var(--on-cham); }
+
+:focus-visible {
+  outline: 2px solid var(--cham);
+  outline-offset: 2px;
+  border-radius: 1px;
 }
 
-.glass-input {
-  background: rgba(15, 15, 26, 0.6);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(4px);
-  transition: all 0.3s ease;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.glass-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px var(--primary-glow);
+/* ============================================================
+   Chữ
+   ============================================================ */
+
+.t-page {
+  font-family: var(--font-copy);
+  font-size: clamp(1.75rem, 1.4rem + 1.6vw, 2.125rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.t-section {
+  font-family: var(--font-copy);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Nhãn nhỏ chữ hoa — thay cho emoji làm dấu mục */
+.t-label {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+.t-lede {
+  color: var(--ink-2);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+
+/* Bản thảo do AI sinh ra — đọc như bản in thử, không như UI */
+.t-copy {
+  font-family: var(--font-copy);
+  font-size: 1.125rem;
+  line-height: 1.75;   /* dấu tiếng Việt chồng cả trên lẫn dưới */
+  color: var(--ink);
+}
+
+.t-data {
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   Bề mặt
+   ============================================================ */
+
+.sheet {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+}
+
+.inset {
+  background: var(--inset);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+}
+
+/* ============================================================
+   Điều khiển
+   ============================================================ */
+
+.btn {
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.75rem 1.125rem;
+  border-radius: var(--r);
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn-primary { background: var(--cham); color: var(--on-cham); }
+.btn-primary:hover:not(:disabled) { background: var(--cham-hover); }
+
+.btn-default {
+  background: var(--sheet);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.btn-default:hover:not(:disabled) { background: var(--inset); }
+
+.btn-quiet { background: transparent; color: var(--ink-2); }
+.btn-quiet:hover:not(:disabled) { background: var(--inset); color: var(--ink); }
+
+.btn-go { background: var(--pass); color: #fff; }
+.btn-go:hover:not(:disabled) { filter: brightness(1.08); }
+
+.btn-danger { background: transparent; border-color: var(--fail); color: var(--fail); }
+.btn-danger:hover:not(:disabled) { background: var(--fail-soft); }
+
+/* Chọn nhiều — hộp đánh dấu dạng nút */
+.chip {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--r);
+  border: 1px solid var(--rule-strong);
+  background: var(--sheet);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+.chip:hover { border-color: var(--ink-3); color: var(--ink); }
+.chip[data-on='true'] {
+  background: var(--cham-soft);
+  border-color: var(--cham);
+  color: var(--cham);
+  font-weight: 600;
+}
+
+.field {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--sheet);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  padding: 0.6875rem 0.875rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field::placeholder { color: var(--ink-3); }
+.field:focus {
   outline: none;
+  border-color: var(--cham);
+  box-shadow: inset 0 0 0 1px var(--cham);
 }
+textarea.field { resize: vertical; line-height: 1.65; }
+select.field { appearance: none; padding-right: 2rem; }
 
-.btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, #aa77ff 100%);
-  border: none;
-  color: white;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+/* Trạng thái — mã hoá bằng cả hình dạng lẫn màu, không chỉ màu */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .1875rem .5rem;
+  border-radius: 2px;
+  border: 1px solid currentColor;
 }
+.tag-pass { color: var(--pass); background: var(--pass-soft); }
+.tag-warn { color: var(--warn); background: var(--warn-soft); }
+.tag-fail { color: var(--fail); background: var(--fail-soft); }
+.tag-info { color: var(--cham); background: var(--cham-soft); }
 
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
-  filter: brightness(1.1);
-}
+/* ============================================================
+   Markdown — strategy, preview tài liệu
+   ============================================================ */
 
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  box-shadow: none;
+.md { font-family: var(--font-copy); font-size: 1.0625rem; line-height: 1.75; color: var(--ink); }
+.md > * + * { margin-top: 1em; }
+.md h1, .md h2, .md h3 {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  margin-top: 1.75em;
 }
+.md h1 { font-size: 1.375rem; }
+.md h2 {
+  font-size: 1.125rem;
+  padding-bottom: .375rem;
+  border-bottom: 1px solid var(--rule);
+}
+.md h3 { font-size: 1rem; color: var(--ink-2); }
+.md > :first-child { margin-top: 0; }
+.md ul, .md ol { padding-left: 1.25em; }
+.md li + li { margin-top: .375em; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md strong { font-weight: 600; }
+.md em { font-style: italic; }
+.md code {
+  font-family: var(--font-data);
+  font-size: .875em;
+  background: var(--inset);
+  padding: .1em .35em;
+  border-radius: 2px;
+}
+.md pre {
+  font-family: var(--font-data);
+  font-size: .8125rem;
+  background: var(--inset);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  padding: .875rem 1rem;
+  overflow-x: auto;
+}
+.md pre code { background: none; padding: 0; }
+.md blockquote {
+  border-left: 2px solid var(--cham);
+  padding-left: 1em;
+  color: var(--ink-2);
+  font-style: italic;
+}
+.md table { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: .875rem; }
+.md th, .md td { border: 1px solid var(--rule); padding: .5rem .75rem; text-align: left; }
+.md th { background: var(--inset); font-weight: 600; }
+.md a { color: var(--cham); text-decoration: underline; text-underline-offset: 2px; }
 
-.btn-secondary {
-  background: var(--surface-light);
-  border: 1px solid var(--border);
-  color: var(--text);
-  transition: all 0.3s ease;
-}
+/* Nội dung rộng cuộn trong khung của nó, không đẩy trang trượt ngang */
+.scroll-x { overflow-x: auto; }
 
-.btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+/* ============================================================
+   Chuyển cảnh — tiết chế, chỉ một kiểu duy nhất
+   ============================================================ */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
 }
+.rise { animation: rise .28s cubic-bezier(.2,.7,.3,1) both; }

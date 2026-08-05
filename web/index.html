@@ -1,10 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Nhà của Gấu Trắng</title>
+
+    <!-- Cả ba face đều có subset `vietnamese` — bắt buộc, nếu không dấu
+         tiếng Việt sẽ rơi về font hệ thống và trộn typeface giữa câu. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap&subset=vietnamese,latin-ext,latin">
+
+    <script>
+      // Đặt theme trước khi vẽ để tránh nháy nền sai màu
+      (function () {
+        try {
+          var t = localStorage.getItem('mkt_theme');
+          if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

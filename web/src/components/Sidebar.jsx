@@ -1,38 +1,51 @@
-import { Check, Circle, Loader2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 
-const PHASE_CONFIG = {
-  input:           { label: 'Campaign Brief',   icon: '📝' },
-  brief_review:    { label: 'Brief Review',     icon: '📋' },
-  strategy_review: { label: 'Strategy Review',  icon: '🎯' },
-  content_review:  { label: 'Content Review',   icon: '✍️' },
-  final_review:    { label: 'Final Review',     icon: '📊' },
-  export:          { label: 'Export',            icon: '📦' },
+/* Đánh số là hợp lệ ở đây: các bước này THẬT SỰ là một trình tự,
+   thứ tự mang thông tin người dùng cần. */
+const PHASE_LABEL = {
+  input:           'Đề bài',
+  brief_review:    'Duyệt brief',
+  strategy_review: 'Duyệt chiến lược',
+  content_review:  'Duyệt nội dung',
+  final_review:    'Chấm chất lượng',
+  export:          'Bàn giao',
 };
 
 export default function Sidebar({ phase, phases }) {
   const currentIdx = phases.indexOf(phase);
 
   return (
-    <nav className="flex-1 px-2 space-y-2">
-      {phases.map((p, i) => {
-        const config = PHASE_CONFIG[p];
-        const isActive = p === phase;
-        const isDone = i < currentIdx;
+    <nav className="py-2">
+      <ol>
+        {phases.map((p, i) => {
+          const isActive = p === phase;
+          const isDone = i < currentIdx;
 
-        return (
-          <div key={p} className={`flex items-center gap-3 py-3 px-4 rounded-xl transition-all duration-300 ${
-                 isActive ? 'bg-gradient-to-r from-purple-500/20 to-transparent border border-purple-500/30 text-white shadow-[0_0_15px_rgba(139,92,246,0.1)]' : 
-                 isDone ? 'text-emerald-400' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-               }`}>
-            <span className={`text-base w-6 text-center flex items-center justify-center ${isActive ? 'scale-110 drop-shadow-md' : ''}`}>
-              {isDone ? '✓' : config.icon}
-            </span>
-            <span className={`text-sm tracking-wide ${isActive ? 'font-semibold text-purple-200' : 'font-medium'}`}>
-              {config.label}
-            </span>
-          </div>
-        );
-      })}
+          return (
+            <li key={p}>
+              <div
+                aria-current={isActive ? 'step' : undefined}
+                className={`flex items-center gap-3 py-2.5 pl-3 pr-2 border-l-2 transition-colors ${
+                  isActive
+                    ? 'border-cham text-ink'
+                    : 'border-transparent text-ink-3'
+                }`}
+              >
+                <span
+                  className={`w-5 shrink-0 text-center font-data text-[0.75rem] num ${
+                    isActive ? 'text-cham' : isDone ? 'text-pass' : 'text-ink-3'
+                  }`}
+                >
+                  {isDone ? <Check className="w-3.5 h-3.5 mx-auto" strokeWidth={2.5} /> : i + 1}
+                </span>
+                <span className={`text-[0.875rem] ${isActive ? 'font-semibold' : 'font-normal'}`}>
+                  {PHASE_LABEL[p] || p}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </nav>
   );
 }
