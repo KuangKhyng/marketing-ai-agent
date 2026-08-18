@@ -4,8 +4,6 @@ CLI Interface — main entry point for the Marketing Agent Workflow Engine.
 Commands:
   python cli.py run "Tạo campaign cho dịch vụ tử vi online target Gen Z"
   python cli.py run --interactive
-  python cli.py eval
-  python cli.py analyze-voice
 """
 import sys
 import os
@@ -227,8 +225,6 @@ def main():
 Examples:
   python cli.py run "Tạo campaign cho dịch vụ tử vi online target Gen Z"
   python cli.py run --interactive
-  python cli.py eval
-  python cli.py analyze-voice
         """,
     )
 
@@ -239,20 +235,10 @@ Examples:
     run_parser.add_argument("input", nargs="?", help="Campaign request (natural language)")
     run_parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
 
-    # eval command (Phase 2)
-    eval_parser = subparsers.add_parser("eval", help="Run evaluation on golden dataset")
-
-    # analyze-voice command (Phase 2)
-    voice_parser = subparsers.add_parser("analyze-voice", help="Analyze sample posts to create voice profile")
-
     args = parser.parse_args()
 
     if args.command == "run":
         run_campaign(input_text=args.input, interactive=args.interactive)
-    elif args.command == "eval":
-        console.print("[yellow]Evaluation runner is a Phase 2 feature.[/yellow]")
-    elif args.command == "analyze-voice":
-        console.print("[yellow]Voice analyzer is a Phase 2 feature.[/yellow]")
     else:
         parser.print_help()
 

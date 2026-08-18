@@ -84,8 +84,8 @@ python cli.py run --interactive
 ```
 
 Nhánh CLI chạy qua LangGraph và **tự** vòng lại khi review trượt, khác với web
-(xem Pipeline Flow). `eval` và `analyze-voice` là hai lệnh chỗ giữ chỗ, in ra
-"Phase 2 feature" và chưa làm gì.
+(xem Pipeline Flow). Kết quả ghi vào `outputs/{run_id}/` gồm `content.md`,
+`content.json` và `trace.json`.
 
 ### Dependency
 
