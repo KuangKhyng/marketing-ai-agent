@@ -44,6 +44,20 @@ class UpdateVoiceProfileRequest(BaseModel):
     profile: dict
 
 
+class CloneBrandRequest(BaseModel):
+    """
+    Nhân bản brand. include_products mặc định False: người ta nhân bản chủ yếu
+    để làm brand cùng ngành KHÁC sản phẩm.
+    """
+    source_id: str
+    id: str
+    name: str
+    description: str = ""
+    color: str = "#6c5ce7"
+    icon: str = "📦"
+    include_products: bool = False
+
+
 class BootstrapVoiceRequest(BaseModel):
     """Chặng 1 — những bài brand đã từng đăng."""
     samples: list[str] = Field(min_length=1)
@@ -219,10 +233,12 @@ def bootstrap_voice(brand_id: str, req: BootstrapVoiceRequest):
     brand = _require_brand(brand_id)
     _guard_size(req.samples)
 
-    voice = brand_bootstrap.extract_voice(req.samples)
-    return brand_bootstrap.build_voice_draft(
+    voice, usage = brand_bootstrap.extract_voice(req.samples)
+    draft = brand_bootstrap.build_voice_draft(
         manager, brand_id, brand.get("name", brand_id), voice
     )
+    draft.usage = usage
+    return draft
 
 
 @router.post("/{brand_id}/bootstrap/brand", response_model=brand_bootstrap.BootstrapDraft)
@@ -231,10 +247,12 @@ def bootstrap_brand(brand_id: str, req: BootstrapBrandRequest):
     brand = _require_brand(brand_id)
     _guard_size(req.documents)
 
-    extracted = brand_bootstrap.extract_brand(req.documents)
-    return brand_bootstrap.build_brand_draft(
+    extracted, usage = brand_bootstrap.extract_brand(req.documents)
+    draft = brand_bootstrap.build_brand_draft(
         manager, brand_id, brand.get("name", brand_id), extracted
     )
+    draft.usage = usage
+    return draft
 
 
 @router.post("/{brand_id}/bootstrap/apply")
@@ -279,11 +297,13 @@ def bootstrap_preview(req: CreationPreviewRequest):
     _guard_size(req.samples + req.documents)
 
     try:
-        voice, brand = brand_bootstrap.extract_for_creation(req.samples, req.documents)
+        voice, brand, usage = brand_bootstrap.extract_for_creation(req.samples, req.documents)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"message": str(e)}) from e
 
-    return brand_bootstrap.build_creation_preview(manager, voice, brand, req.name_hint)
+    return brand_bootstrap.build_creation_preview(
+        manager, voice, brand, req.name_hint, usage=usage
+    )
 
 
 @router.post("/bootstrap/create")
@@ -311,3 +331,55 @@ def bootstrap_create(req: CreateFromDraftRequest):
         )
     except BrandExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+@router.post("/bootstrap/estimate", response_model=brand_bootstrap.CostEstimate)
+def bootstrap_estimate(req: CreationPreviewRequest):
+    """
+    Sắp đọc chừng này thì tốn bao nhiêu.
+
+    KHÔNG gọi LLM, không tốn gì. Dùng để hỏi người dùng trước khi thật sự đọc —
+    một dòng cảnh báo chung chung không ngăn được ai bấm mười lần.
+
+    `cached=true` nghĩa là đúng tài liệu này đã đọc rồi, bấm lại không mất phí.
+    """
+    return brand_bootstrap.estimate_cost_for(req.samples, req.documents)
+
+
+@router.post("/clone")
+def clone_brand(req: CloneBrandRequest):
+    """
+    Tạo brand mới từ một brand có sẵn.
+
+    Giữ nhận diện, giọng, khung bài, khách hàng, quy định. Mặc định BỎ sản
+    phẩm — chép sang thì bài viết sẽ nói về hàng của brand khác, mà reviewer
+    coi knowledge_base là nguồn sự thật nên không bắt được lỗi đó.
+    """
+    validate_id(req.source_id, "source_id")
+    validate_id(req.id, "brand_id")
+
+    if req.source_id == req.id:
+        raise HTTPException(
+            status_code=400, detail={"message": "Mã brand mới phải khác brand nguồn."}
+        )
+    if not manager.get_brand(req.source_id):
+        raise HTTPException(status_code=404, detail="Brand nguồn không tồn tại")
+    if manager.get_brand(req.id):
+        raise HTTPException(status_code=409, detail="Brand already exists")
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail={"message": "Brand cần có tên."})
+
+    try:
+        return manager.clone_brand(
+            req.source_id,
+            req.id,
+            req.name.strip(),
+            req.description.strip(),
+            color=req.color,
+            icon=req.icon,
+            include_products=req.include_products,
+        )
+    except BrandExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e

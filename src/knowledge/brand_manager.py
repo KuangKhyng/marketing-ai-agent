@@ -12,6 +12,7 @@ Each brand lives in knowledge_base/brands/{brand_id}/ with:
   - policies/*.md
 """
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,8 @@ from datetime import datetime
 
 from src.config.settings import PROJECT_ROOT
 from src.utils.paths import InvalidPathError, is_valid_id, safe_join, validate_id
+
+logger = logging.getLogger(__name__)
 
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
@@ -236,6 +239,86 @@ class BrandManager:
             json.dumps(voice_profile, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+        return meta
+
+    def clone_brand(
+        self,
+        source_id: str,
+        new_id: str,
+        name: str,
+        description: str = "",
+        color: str = "#6c5ce7",
+        icon: str = "📦",
+        include_products: bool = False,
+    ) -> dict:
+        """
+        Nhân bản một brand: giữ nhận diện, giọng, khung bài, khách hàng, quy
+        định — nhưng MẶC ĐỊNH bỏ sản phẩm.
+
+        Vì sao mặc định bỏ: người ta nhân bản chủ yếu để làm brand cùng ngành
+        khác sản phẩm. Chép luôn sản phẩm cũ sang thì bài viết sẽ nói về hàng
+        của brand khác, mà reviewer lại coi knowledge_base là nguồn sự thật
+        nên sẽ không bắt được lỗi đó.
+
+        KHÔNG chép _sources/: tài liệu gốc thuộc về brand cũ.
+        """
+        source_dir = self._brand_dir(source_id)
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Brand nguồn '{source_id}' không tồn tại")
+
+        target_dir = self._brand_dir(new_id)
+        if target_dir.exists() and any(target_dir.iterdir()):
+            raise BrandExistsError(f"Thư mục brand '{new_id}' đã tồn tại và không rỗng")
+
+        bo_qua = {"_sources"} | (set() if include_products else {"products"})
+
+        for src in source_dir.rglob("*"):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(source_dir)
+            if rel.parts and rel.parts[0] in bo_qua:
+                continue
+            if rel.name == "brand.json":
+                continue  # dựng lại bên dưới, không chép nguyên
+
+            dest = target_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
+        # Thư mục rỗng vẫn phải có để UI thêm tài liệu vào được
+        for sub in ("products", "audience"):
+            (target_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        source_meta = self._load_brand_meta(source_id) or {}
+        meta = {
+            "id": new_id,
+            "name": name,
+            "description": description,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "color": color,
+            "icon": icon,
+            # Những ràng buộc này thường theo ngành nên chép sang là đúng
+            "default_channels": source_meta.get("default_channels", ["facebook", "instagram"]),
+            "default_goal": source_meta.get("default_goal", "awareness"),
+            "forbidden_claims": list(source_meta.get("forbidden_claims", [])),
+            "mandatory_terms": list(source_meta.get("mandatory_terms", [])),
+            "cloned_from": source_id,
+        }
+        self._save_brand_meta(new_id, meta)
+
+        # voice_profile.json mang profile_id của brand cũ, phải đổi
+        voice_path = target_dir / "voice_profile.json"
+        if voice_path.exists():
+            try:
+                profile = json.loads(voice_path.read_text(encoding="utf-8"))
+                profile["profile_id"] = new_id
+                voice_path.write_text(
+                    json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+            except (OSError, ValueError) as e:
+                logger.warning("Không sửa được profile_id khi nhân bản: %s", e)
 
         return meta
 

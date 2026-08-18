@@ -44,6 +44,7 @@ def mocked_extract(monkeypatch):
             a_brand(brand_name="Tử Vi Online", short_description="Dịch vụ xem tử vi online")
             if documents
             else None,
+            bb.ExtractUsage(input_tokens=4000, output_tokens=1200, cost_estimate=0.03),
         ),
     )
 

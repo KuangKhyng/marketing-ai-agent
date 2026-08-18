@@ -33,7 +33,9 @@ def client(tmp_path, monkeypatch):
 
 def test_chang_1_tra_ve_draft_va_khong_ghi_gi(client, monkeypatch):
     c, brands = client
-    monkeypatch.setattr(bb, "extract_voice", lambda samples: a_voice())
+    monkeypatch.setattr(
+        bb, "extract_voice", lambda samples: (a_voice(), bb.ExtractUsage(cost_estimate=0.02))
+    )
 
     truoc = (brands / "ca_phe_abc" / "tone_of_voice.md").read_text(encoding="utf-8")
 
@@ -51,7 +53,9 @@ def test_chang_1_tra_ve_draft_va_khong_ghi_gi(client, monkeypatch):
 
 def test_chang_2_tra_ve_draft_kem_cho_chua_chac(client, monkeypatch):
     c, _ = client
-    monkeypatch.setattr(bb, "extract_brand", lambda documents: a_brand())
+    monkeypatch.setattr(
+        bb, "extract_brand", lambda documents: (a_brand(), bb.ExtractUsage(cost_estimate=0.02))
+    )
 
     r = c.post("/api/brands/ca_phe_abc/bootstrap/brand", json={"documents": ["hồ sơ"]})
     assert r.status_code == 200, r.text
@@ -68,7 +72,9 @@ def test_chang_2_tra_ve_draft_kem_cho_chua_chac(client, monkeypatch):
 
 def test_apply_chi_ghi_thu_duoc_gui_len(client, monkeypatch):
     c, brands = client
-    monkeypatch.setattr(bb, "extract_voice", lambda samples: a_voice())
+    monkeypatch.setattr(
+        bb, "extract_voice", lambda samples: (a_voice(), bb.ExtractUsage(cost_estimate=0.02))
+    )
 
     draft = c.post(
         "/api/brands/ca_phe_abc/bootstrap/voice", json={"samples": ["bài"]}
@@ -99,7 +105,9 @@ def test_apply_rong_bi_tu_choi(client):
 
 def test_tai_lieu_qua_dai_tra_413(client, monkeypatch):
     c, _ = client
-    monkeypatch.setattr(bb, "extract_voice", lambda samples: a_voice())
+    monkeypatch.setattr(
+        bb, "extract_voice", lambda samples: (a_voice(), bb.ExtractUsage(cost_estimate=0.02))
+    )
 
     r = c.post(
         "/api/brands/ca_phe_abc/bootstrap/voice",

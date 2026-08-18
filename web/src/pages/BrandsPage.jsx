@@ -101,6 +101,7 @@ export default function BrandsPage() {
       {showCreate && (
         <div className="mb-6">
           <BrandCreate
+            brands={brands}
             showToast={showToast}
             onCancel={() => setShowCreate(false)}
             onCreated={(id) => navigate(`/knowledge/${id}`)}

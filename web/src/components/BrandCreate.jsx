@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { brandsAPI } from '../api/client';
 import { Loader2, Plus, X, ArrowLeft } from 'lucide-react';
 import DraftReview from './DraftReview';
+import BrandClone from './BrandClone';
 import { countChosen } from '../utils/draft';
+import { formatCost } from '../utils/cost';
 
 /*
  * Tạo brand TỪ tài liệu.
@@ -23,13 +25,16 @@ const CHECK_LABEL = {
   audience: 'Khách hàng',
 };
 
-export default function BrandCreate({ onCreated, onCancel, onEmptyBrand, showToast }) {
+export default function BrandCreate({ brands = [], onCreated, onCancel, onEmptyBrand, showToast }) {
+  const [mode, setMode] = useState('tailieu');   // tailieu | nhanban
   const [posts, setPosts] = useState(['']);
   const [docs, setDocs] = useState(['']);
   const [nameHint, setNameHint] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
+  // Hỏi giá trước khi đọc. null = chưa hỏi, object = đang chờ người dùng xác nhận.
+  const [estimate, setEstimate] = useState(null);
 
   // Bước duyệt — sửa được trước khi tạo
   const [id, setId] = useState('');
@@ -42,14 +47,37 @@ export default function BrandCreate({ onCreated, onCancel, onEmptyBrand, showToa
 
   const coTaiLieu = [...posts, ...docs].some(c => c.trim());
 
-  const handleRead = async () => {
+  const payload = () => ({
+    samples: posts.filter(p => p.trim()),
+    documents: docs.filter(d => d.trim()),
+    name_hint: nameHint.trim(),
+  });
+
+  /* Bước hỏi giá. Không gọi LLM nên miễn phí — mục đích là để không ai bấm
+     đọc chục lần mà không biết mình đang trả tiền. Nếu đúng tài liệu này đã
+     đọc rồi (cached) thì đọc thẳng, khỏi hỏi. */
+  const handleAskPrice = async () => {
     setBusy(true);
     try {
-      const { data } = await brandsAPI.bootstrapPreview({
-        samples: posts.filter(p => p.trim()),
-        documents: docs.filter(d => d.trim()),
-        name_hint: nameHint.trim(),
-      });
+      const { data } = await brandsAPI.bootstrapEstimate(payload());
+      if (data.cached) {
+        await handleRead();
+      } else {
+        setEstimate(data);
+      }
+    } catch {
+      // Không hỏi được giá thì vẫn cho đọc, chỉ là không biết trước bao nhiêu
+      setEstimate({ estimated_cost: null, input_chars: 0, cached: false });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRead = async () => {
+    setBusy(true);
+    setEstimate(null);
+    try {
+      const { data } = await brandsAPI.bootstrapPreview(payload());
       setPreview(data);
       setId(data.identity.suggested_id);
       setName(data.identity.name);
@@ -107,7 +135,30 @@ export default function BrandCreate({ onCreated, onCancel, onEmptyBrand, showToa
           <X className="w-4 h-4" />
         </button>
 
-        <h2 className="t-section mb-2">Brand mới</h2>
+        <h2 className="t-section mb-4">Brand mới</h2>
+
+        <div className="inline-flex border border-rule-strong rounded-[3px] overflow-hidden mb-5">
+          {[
+            { v: 'tailieu', l: 'Từ tài liệu' },
+            { v: 'nhanban', l: 'Nhân bản brand có sẵn' },
+          ].map((m, i) => (
+            <button
+              key={m.v}
+              onClick={() => setMode(m.v)}
+              disabled={busy}
+              className={`px-4 py-2.5 text-[0.875rem] transition-colors ${i > 0 ? 'border-l border-rule-strong' : ''} ${
+                mode === m.v ? 'bg-cham text-on-cham font-semibold' : 'bg-sheet text-ink-2 hover:bg-inset'
+              }`}
+            >
+              {m.l}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'nhanban' ? (
+          <BrandClone brands={brands} onCreated={onCreated} showToast={showToast} />
+        ) : (
+        <>
         <p className="t-lede mb-6">
           Dán những gì bạn đã có. Hệ thống đọc rồi dựng sẵn nhận diện, giọng văn, sản phẩm và
           chân dung khách — bạn chỉ việc sửa lại cho đúng.
@@ -146,20 +197,52 @@ export default function BrandCreate({ onCreated, onCancel, onEmptyBrand, showToa
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 pt-5 border-t border-rule">
-          <button onClick={handleRead} disabled={busy || !coTaiLieu} className="btn btn-primary">
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-            {busy ? 'Đang đọc tài liệu' : 'Đọc và dựng brand'}
-          </button>
-          <button onClick={onEmptyBrand} disabled={busy} className="btn btn-quiet">
-            Tôi chưa có tài liệu, tạo brand trống
-          </button>
-        </div>
+        {estimate ? (
+          <div className="sheet px-5 py-4 mt-5" style={{ borderLeft: '2px solid var(--warn)' }}>
+            <p className="t-label mb-1.5">Xác nhận trước khi đọc</p>
+            <p className="text-[0.9375rem] mb-1">
+              Sẽ đọc <strong>{estimate.input_chars.toLocaleString('vi-VN')}</strong> ký tự
+              {estimate.estimated_cost != null && (
+                <> — ước tính <strong>{formatCost(estimate.estimated_cost)}</strong></>
+              )}
+            </p>
+            <p className="text-[0.875rem] text-ink-2 mb-3">
+              Đọc lại đúng tài liệu này lần sau sẽ không mất phí.
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              <button onClick={handleRead} disabled={busy} className="btn btn-primary">
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                {busy ? 'Đang đọc' : 'Đọc ngay'}
+              </button>
+              <button onClick={() => setEstimate(null)} disabled={busy} className="btn btn-quiet">
+                Để sửa lại tài liệu đã
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2.5 pt-5 border-t border-rule">
+              <button
+                onClick={handleAskPrice}
+                disabled={busy || !coTaiLieu}
+                className="btn btn-primary"
+              >
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                {busy ? 'Đang tính' : 'Đọc và dựng brand'}
+              </button>
+              <button onClick={onEmptyBrand} disabled={busy} className="btn btn-quiet">
+                Tôi chưa có tài liệu, tạo brand trống
+              </button>
+            </div>
 
-        <p className="mt-3 text-[0.8125rem] text-ink-3">
-          Bước đọc dùng AI nên mất khoảng 30–60 giây và có tính phí. Chưa có gì được tạo cho tới
-          khi bạn duyệt ở bước sau.
-        </p>
+            <p className="mt-3 text-[0.8125rem] text-ink-3">
+              Bước đọc dùng AI nên mất 30–60 giây và có tính phí — sẽ hiện giá để bạn xác nhận
+              trước. Chưa có gì được tạo cho tới khi bạn duyệt ở bước sau.
+            </p>
+          </>
+        )}
+        </>
+        )}
       </div>
     );
   }
@@ -181,6 +264,14 @@ export default function BrandCreate({ onCreated, onCancel, onEmptyBrand, showToa
           <ArrowLeft className="w-4 h-4" /> Sửa tài liệu
         </button>
       </div>
+
+      {preview.draft?.usage && (
+        <p className="text-[0.8125rem] text-ink-3 mb-4">
+          {preview.draft.usage.cached
+            ? 'Lấy lại từ lần đọc trước, không tốn thêm phí.'
+            : `Lần đọc này tốn khoảng ${formatCost(preview.draft.usage.cost_estimate)}.`}
+        </p>
+      )}
 
       {/* Brand sẽ đầy tới đâu */}
       <div className="sheet spot px-5 py-4 mb-6">

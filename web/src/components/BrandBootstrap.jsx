@@ -3,6 +3,7 @@ import { brandsAPI } from '../api/client';
 import { Loader2, Plus, X, Check } from 'lucide-react';
 import DraftReview from './DraftReview';
 import { countChosen } from '../utils/draft';
+import { formatCost } from '../utils/cost';
 
 /*
  * Nạp liệu cho knowledge base của brand.
@@ -24,6 +25,7 @@ const STAGES = {
     placeholder:
       'Dán nguyên văn một bài đã đăng, kể cả emoji và hashtag.\n\nCàng nhiều bài thì càng rút được đúng, 3–5 bài là đủ dùng.',
     call: (brandId, chunks) => brandsAPI.bootstrapVoice(brandId, chunks),
+    estimatePayload: (chunks) => ({ samples: chunks, documents: [] }),
   },
   brand: {
     label: 'Tài liệu brand',
@@ -32,6 +34,7 @@ const STAGES = {
     placeholder:
       'Dán tài liệu về brand: bạn bán gì, cho ai, điều gì khiến khách chọn bạn.\n\nCó gì dán nấy — thiếu chỗ nào hệ thống sẽ nói ra chỗ đó.',
     call: (brandId, chunks) => brandsAPI.bootstrapBrand(brandId, chunks),
+    estimatePayload: (chunks) => ({ samples: [], documents: chunks }),
   },
 };
 
@@ -40,6 +43,8 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
   const [chunks, setChunks] = useState(['']);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);
+  // Hỏi giá trước khi đọc — xem BrandCreate, cùng lý do
+  const [estimate, setEstimate] = useState(null);
   const [chosen, setChosen] = useState({});      // path -> bool
   const [takeVoice, setTakeVoice] = useState(true);
   const [takeMeta, setTakeMeta] = useState(true);
@@ -51,11 +56,29 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
     setStage(next);
     setChunks(['']);
     setDraft(null);
+    setEstimate(null);
+  };
+
+  const handleAskPrice = async () => {
+    setBusy(true);
+    try {
+      const { data } = await brandsAPI.bootstrapEstimate(cfg.estimatePayload(filled));
+      if (data.cached) {
+        await handleExtract();
+      } else {
+        setEstimate(data);
+      }
+    } catch {
+      setEstimate({ estimated_cost: null, input_chars: 0, cached: false });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleExtract = async () => {
     setBusy(true);
     setDraft(null);
+    setEstimate(null);
     try {
       const { data } = await cfg.call(brandId, filled);
       setDraft(data);
@@ -147,24 +170,49 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
-            <button onClick={() => setChunks([...chunks, ''])} disabled={busy} className="btn btn-quiet">
-              <Plus className="w-4 h-4" /> Thêm {cfg.itemLabel.toLowerCase()}
-            </button>
-            <button
-              onClick={handleExtract}
-              disabled={busy || filled.length === 0}
-              className="btn btn-primary"
-            >
-              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-              {busy ? 'Đang đọc' : 'Đọc và đề xuất'}
-            </button>
-          </div>
+          {estimate ? (
+            <div className="sheet px-5 py-4" style={{ borderLeft: '2px solid var(--warn)' }}>
+              <p className="t-label mb-1.5">Xác nhận trước khi đọc</p>
+              <p className="text-[0.9375rem] mb-1">
+                Sẽ đọc <strong>{estimate.input_chars.toLocaleString('vi-VN')}</strong> ký tự
+                {estimate.estimated_cost != null && (
+                  <> — ước tính <strong>{formatCost(estimate.estimated_cost)}</strong></>
+                )}
+              </p>
+              <p className="text-[0.875rem] text-ink-2 mb-3">
+                Đọc lại đúng tài liệu này lần sau sẽ không mất phí.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <button onClick={handleExtract} disabled={busy} className="btn btn-primary">
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {busy ? 'Đang đọc' : 'Đọc ngay'}
+                </button>
+                <button onClick={() => setEstimate(null)} disabled={busy} className="btn btn-quiet">
+                  Để sửa lại tài liệu đã
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2.5">
+                <button onClick={() => setChunks([...chunks, ''])} disabled={busy} className="btn btn-quiet">
+                  <Plus className="w-4 h-4" /> Thêm {cfg.itemLabel.toLowerCase()}
+                </button>
+                <button
+                  onClick={handleAskPrice}
+                  disabled={busy || filled.length === 0}
+                  className="btn btn-primary"
+                >
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {busy ? 'Đang tính' : 'Đọc và đề xuất'}
+                </button>
+              </div>
 
-          {busy && (
-            <p className="mt-3 text-[0.8125rem] text-ink-3">
-              Thường mất 20–40 giây. Chưa có gì được ghi vào kho brand cho tới khi bạn duyệt.
-            </p>
+              <p className="mt-3 text-[0.8125rem] text-ink-3">
+                Bước đọc dùng AI và có tính phí — sẽ hiện giá để bạn xác nhận trước. Chưa có gì
+                được ghi vào kho brand cho tới khi bạn duyệt.
+              </p>
+            </>
           )}
         </>
       )}
@@ -177,6 +225,13 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
             <p className="text-[0.9375rem]">
               Chọn phần bạn muốn giữ. Bỏ chọn thì không ghi gì vào file đó.
             </p>
+            {draft.usage && (
+              <p className="text-[0.8125rem] text-ink-3 mt-2">
+                {draft.usage.cached
+                  ? 'Lấy lại từ lần đọc trước, không tốn thêm phí.'
+                  : `Lần đọc này tốn khoảng ${formatCost(draft.usage.cost_estimate)}.`}
+              </p>
+            )}
           </div>
 
           <DraftReview

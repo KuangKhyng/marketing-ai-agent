@@ -150,6 +150,22 @@ Nguyên văn tài liệu bạn dán được giữ ở `_sources/*.txt` trong th
 retriever không đọc thư mục này, nó nằm đó để sau này đọc lại được bằng prompt
 tốt hơn mà không phải đi tìm bài cũ.
 
+**Nhân bản brand** (`Thêm brand → Nhân bản brand có sẵn`): giữ giọng, khung bài,
+chân dung khách và ràng buộc nội dung, **mặc định bỏ sản phẩm** — đó thường là
+lý do người ta nhân bản. Chỉ chép file, không gọi AI.
+
+### Chi phí
+
+Mỗi lượt đọc tài liệu là một lần gọi Sonnet có tính tiền, nên:
+
+- **Hỏi giá trước.** `POST /brands/bootstrap/estimate` tính số ký tự và ước
+  tính chi phí mà không gọi LLM; UI bắt xác nhận trước khi đọc thật.
+- **Cache theo nội dung.** Đọc lại đúng tài liệu cũ thì lấy kết quả đã lưu,
+  không gọi API lần nữa. Khoá cache gồm cả prompt, nên sửa prompt là kết quả cũ
+  tự hết giá trị.
+- **Đo thật.** Mỗi lần đọc trả về `usage` (token vào/ra, chi phí, `cached`) và
+  UI hiện ra — không ai tiêu tiền mà không thấy.
+
 **Vì sao luôn phải có bước người duyệt.** `knowledge_base/` là nguồn sự thật của
 pipeline — reviewer chấm `factuality` dựa vào nó, và `brief_parser` cố tình ghi
 đè thông tin brand từ UI để LLM không tự bịa. Nếu để bước nạp liệu ghi thẳng

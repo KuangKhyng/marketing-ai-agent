@@ -136,6 +136,11 @@ export const brandsAPI = {
   // Tạo brand TỪ tài liệu: đọc trước (chưa tạo gì), duyệt rồi mới tạo
   bootstrapPreview: (payload) => api.post('/brands/bootstrap/preview', payload),
   bootstrapCreate: (payload) => api.post('/brands/bootstrap/create', payload),
+  // Hỏi giá trước khi đọc — không gọi LLM nên miễn phí
+  bootstrapEstimate: (payload) => api.post('/brands/bootstrap/estimate', payload),
+
+  // Nhân bản brand có sẵn — chỉ chép file, không gọi AI
+  clone: (payload) => api.post('/brands/clone', payload),
 };
 
 export const templatesAPI = {
