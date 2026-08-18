@@ -29,6 +29,58 @@ class BrandExistsError(Exception):
     """Đã có dữ liệu ở thư mục brand này — route layer map thành HTTP 409."""
 
 
+def real_content_length(text: str) -> int:
+    """
+    Độ dài phần nội dung THẬT của một markdown, bỏ khung và placeholder.
+
+    create_brand() sinh file mẫu đầy placeholder kiểu "(Thêm brand identity
+    tại đây)" — riêng phần khung đó đã dài hơn 50 ký tự, nên phép đo ngây thơ
+    len(file) > 50 sẽ chấm brand rỗng hoàn toàn là đã hoàn thành một nửa.
+    Điểm hoàn thiện mà nói dối thì tệ hơn là không có.
+
+    Dùng chung cho file đã ghi lẫn nội dung mới đang là đề xuất.
+    """
+    real = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        body = line.lstrip("-*").strip()
+        # "(Sứ mệnh)", "- (Giá trị 1)", "_(chưa có trong tài liệu)_"
+        if body.startswith("(") and body.endswith(")"):
+            continue
+        if body.startswith("_(") and body.endswith(")_"):
+            continue
+        real.append(body)
+
+    return len(" ".join(real))
+
+
+def completeness_from_contents(contents: dict[str, str]) -> dict:
+    """
+    Tính điểm hoàn thiện từ nội dung, không cần đụng đĩa.
+
+    contents: {"identity.md": "...", "products/san_pham.md": "...", ...}
+    Dùng để xem trước brand sẽ đầy tới đâu TRƯỚC KHI tạo nó.
+    """
+    def has_real(path: str) -> bool:
+        return real_content_length(contents.get(path, "")) > 50
+
+    def has_any_in(prefix: str) -> bool:
+        return any(
+            path.startswith(prefix) and real_content_length(text) > 0
+            for path, text in contents.items()
+        )
+
+    checks = {
+        "identity": has_real("identity.md"),
+        "tone": has_real("tone_of_voice.md"),
+        "product": has_any_in("products/"),
+        "audience": has_any_in("audience/"),
+    }
+    return {"score": sum(25 for v in checks.values() if v), "checks": checks}
+
+
 class BrandManager:
     """Manages brand knowledge base operations."""
 
@@ -248,6 +300,31 @@ class BrandManager:
             return True
         return False
 
+    # === Tài liệu gốc người dùng đã nạp ===
+
+    def save_source(self, brand_id: str, name: str, text: str) -> str:
+        """
+        Lưu nguyên văn tài liệu người dùng dán vào, để sau này đọc lại được
+        bằng prompt tốt hơn mà không phải đi tìm lại bài cũ.
+
+        Ghi dưới dạng .txt trong _sources/ nên:
+          - retriever KHÔNG nạp (nó chỉ đọc tên file cố định + products/,
+            audience/, policies/ dạng .md)
+          - get_brand() không liệt kê ra tab Tài liệu (rglob "*.md")
+        Tức là tài liệu gốc không lẫn vào knowledge, chỉ nằm đó để tra lại.
+        """
+        validate_id(name, "source_name")
+        path = safe_join(self._brand_dir(brand_id), "_sources", f"{name}.txt")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return f"_sources/{name}.txt"
+
+    def list_sources(self, brand_id: str) -> list[str]:
+        sources_dir = self._brand_dir(brand_id) / "_sources"
+        if not sources_dir.exists():
+            return []
+        return sorted(f.name for f in sources_dir.glob("*.txt"))
+
     # === Voice Profile ===
 
     def get_voice_profile(self, brand_id: str) -> Optional[dict]:
@@ -353,33 +430,10 @@ class BrandManager:
 
     @staticmethod
     def _real_content_length(path: Path) -> int:
-        """
-        Độ dài phần nội dung THẬT của một file markdown.
-
-        create_brand() sinh file mẫu đầy placeholder kiểu "(Thêm brand identity
-        tại đây)" — riêng phần khung đó đã dài hơn 50 ký tự, nên phép đo cũ
-        (len(file) > 50) chấm brand rỗng hoàn toàn là đã hoàn thành 50%.
-        Điểm hoàn thiện mà nói dối thì tệ hơn là không có.
-
-        Nên bỏ tiêu đề, dòng placeholder trong ngoặc đơn, và ghi chú nghiêng.
-        """
+        """Bản đọc-từ-đĩa của real_content_length()."""
         if not path.exists():
             return 0
-
-        real = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            body = line.lstrip("-*").strip()
-            # "(Sứ mệnh)", "- (Giá trị 1)", "_(chưa có trong tài liệu)_"
-            if body.startswith("(") and body.endswith(")"):
-                continue
-            if body.startswith("_(") and body.endswith(")_"):
-                continue
-            real.append(body)
-
-        return len(" ".join(real))
+        return real_content_length(path.read_text(encoding="utf-8"))
 
     def _calc_completeness(self, brand_dir: Path) -> dict:
         """Calculate knowledge completeness (4 dimensions × 25%)."""

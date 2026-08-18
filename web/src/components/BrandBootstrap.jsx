@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { brandsAPI } from '../api/client';
-import { Loader2, Plus, X, FileText, Check } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Loader2, Plus, X, Check } from 'lucide-react';
+import DraftReview from './DraftReview';
+import { countChosen } from '../utils/draft';
 
 /*
  * Nạp liệu cho knowledge base của brand.
@@ -43,7 +43,6 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
   const [chosen, setChosen] = useState({});      // path -> bool
   const [takeVoice, setTakeVoice] = useState(true);
   const [takeMeta, setTakeMeta] = useState(true);
-  const [compare, setCompare] = useState({});    // path -> bool
 
   const cfg = STAGES[stage];
   const filled = chunks.filter(c => c.trim().length > 0);
@@ -94,10 +93,7 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
     }
   };
 
-  const soChon =
-    Object.values(chosen).filter(Boolean).length +
-    (takeVoice && draft?.voice_profile ? 1 : 0) +
-    (takeMeta && Object.keys(draft?.brand_meta || {}).length ? 1 : 0);
+  const soChon = countChosen(draft, chosen, takeVoice, takeMeta);
 
   return (
     <div>
@@ -183,101 +179,15 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
             </p>
           </div>
 
-          {draft.notes?.length > 0 && (
-            <div className="sheet px-5 py-4 mb-6" style={{ borderLeft: '2px solid var(--warn)' }}>
-              <p className="t-label mb-2">Tài liệu chưa nói tới</p>
-              {draft.notes.map((n, i) => (
-                <p key={i} className="text-[0.875rem] text-ink-2 leading-relaxed">{n}</p>
-              ))}
-              <p className="text-[0.8125rem] text-ink-3 mt-2">
-                Những chỗ này hệ thống cố tình để trống thay vì đoán. Bạn tự điền sau ở tab Tài liệu.
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-3 mb-6">
-            {draft.files.map(f => (
-              <div key={f.path} className="sheet">
-                <label className="flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(chosen[f.path])}
-                    onChange={e => setChosen({ ...chosen, [f.path]: e.target.checked })}
-                    className="mt-1"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 flex-wrap">
-                      <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="text-[0.9375rem] font-medium">{f.label || f.path}</span>
-                      <span className="font-data text-[0.75rem] text-ink-3">{f.path}</span>
-                      {f.exists && <span className="tag tag-warn">Ghi đè nội dung cũ</span>}
-                    </span>
-                  </span>
-                </label>
-
-                <div className="px-5 pb-4">
-                  {f.exists && (
-                    <button
-                      onClick={() => setCompare({ ...compare, [f.path]: !compare[f.path] })}
-                      className="btn btn-quiet !py-1.5 !px-2.5 !text-[0.75rem] mb-3"
-                    >
-                      {compare[f.path] ? 'Xem bản đề xuất' : 'So với bản đang có'}
-                    </button>
-                  )}
-                  <div className="md !text-[0.875rem] max-h-72 overflow-y-auto border-t border-rule pt-3">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {compare[f.path] ? f.current || '_(trống)_' : f.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {draft.voice_profile && (
-              <label className="sheet flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={takeVoice}
-                  onChange={e => setTakeVoice(e.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="text-[0.9375rem] font-medium">Hồ sơ giọng</span>
-                  <span className="font-data text-[0.75rem] text-ink-3 ml-2">voice_profile.json</span>
-                  <p className="text-[0.875rem] text-ink-2 mt-1">
-                    Tone {draft.voice_profile.tone?.primary}, mức trang trọng{' '}
-                    {draft.voice_profile.tone?.formality}, {draft.voice_profile.anti_ai_rules?.length || 0} quy tắc
-                    tránh giọng AI
-                  </p>
-                </span>
-              </label>
-            )}
-
-            {Object.keys(draft.brand_meta || {}).length > 0 && (
-              <label className="sheet flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={takeMeta}
-                  onChange={e => setTakeMeta(e.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="text-[0.9375rem] font-medium">Ràng buộc nội dung</span>
-                  <span className="font-data text-[0.75rem] text-ink-3 ml-2">brand.json</span>
-                  {draft.brand_meta.forbidden_claims?.length > 0 && (
-                    <p className="text-[0.875rem] text-ink-2 mt-1">
-                      Không được nói: {draft.brand_meta.forbidden_claims.join(' · ')}
-                    </p>
-                  )}
-                  {draft.brand_meta.mandatory_terms?.length > 0 && (
-                    <p className="text-[0.875rem] text-ink-2 mt-1">
-                      Bắt buộc có: {draft.brand_meta.mandatory_terms.join(' · ')}
-                    </p>
-                  )}
-                </span>
-              </label>
-            )}
-          </div>
+          <DraftReview
+            draft={draft}
+            chosen={chosen}
+            setChosen={setChosen}
+            takeVoice={takeVoice}
+            setTakeVoice={setTakeVoice}
+            takeMeta={takeMeta}
+            setTakeMeta={setTakeMeta}
+          />
 
           <div className="flex flex-wrap gap-2.5 pt-5 border-t border-rule">
             <button onClick={() => setDraft(null)} disabled={busy} className="btn btn-quiet">

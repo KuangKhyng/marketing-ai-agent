@@ -103,6 +103,17 @@ class AudienceDraft(BaseModel):
 class BrandExtraction(BaseModel):
     """Chặng 2 — rút bộ khung brand từ tài liệu."""
 
+    # Hai trường này chỉ dùng khi TẠO brand từ tài liệu. Nạp liệu cho brand đã
+    # có thì bỏ qua, không ghi đè tên người dùng đã đặt.
+    brand_name: str = Field(
+        default="",
+        description="Tên brand đúng như tài liệu gọi. Không có thì để rỗng, đừng tự đặt.",
+    )
+    short_description: str = Field(
+        default="",
+        description="Một câu: brand làm gì, ở đâu. Ví dụ 'Quán cà phê specialty tại quận 1'.",
+    )
+
     identity: str = Field(description="Brand là ai, làm gì. 2-5 câu.")
     mission: str = Field(default="", description="Sứ mệnh, nếu tài liệu có nói")
     usp: str = Field(default="", description="Điều khiến khách chọn brand này thay vì đối thủ")
@@ -467,3 +478,201 @@ def extract_brand(documents: list[str]) -> BrandExtraction:
     check_input_size(documents)
     logger.info("Bootstrap brand: đọc %d tài liệu", len(documents))
     return _invoke("brand_bootstrap_brand.md", BrandExtraction, "Tài liệu", documents)
+
+
+# ============================================================
+# Tạo brand TỪ tài liệu
+#
+# Khác với hai chặng ở trên (chạy trên brand đã tồn tại để bổ sung), phần này
+# chạy khi CHƯA có brand nào: đọc tài liệu trước, đề xuất luôn cả tên và mã
+# brand, rồi mới tạo. Tài liệu là điểm xuất phát, không phải thứ nhét vào sau.
+# ============================================================
+
+import unicodedata  # noqa: E402
+
+# đ/Đ là chữ cái riêng trong bảng chữ cái tiếng Việt, NFD không tách được
+_DAC_BIET = {"đ": "d", "Đ": "D"}
+
+
+def slugify_brand_id(name: str, fallback: str = "brand_moi") -> str:
+    """
+    Đề xuất mã brand từ tên: "Tử Vi Online" -> "tu_vi_online".
+
+    Mã này là TÊN THƯ MỤC và không đổi được sau khi tạo, nên đây chỉ là đề
+    xuất — UI phải cho sửa. Kết quả luôn khớp _ID_RE trong src/utils/paths.py
+    ([A-Za-z0-9_-], tối đa 64).
+    """
+    text = "".join(_DAC_BIET.get(ch, ch) for ch in (name or ""))
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+
+    out = []
+    for ch in text.lower():
+        if ch.isascii() and (ch.isalnum() or ch in "_-"):
+            out.append(ch)
+        elif out and out[-1] != "_":
+            out.append("_")
+
+    slug = "".join(out).strip("_-")[:64].rstrip("_-")
+    return slug or fallback
+
+
+class BrandIdentityProposal(BaseModel):
+    """Danh tính brand suy từ tài liệu. Mọi trường đều sửa được ở UI."""
+
+    name: str = ""
+    suggested_id: str = ""
+    description: str = ""
+    id_taken: bool = False
+
+
+class CreationPreview(BaseModel):
+    """Toàn bộ những gì sẽ được tạo, trước khi tạo bất cứ thứ gì."""
+
+    identity: BrandIdentityProposal
+    draft: BootstrapDraft
+    completeness: dict = Field(default_factory=dict)
+
+
+def _merge_drafts(*drafts: BootstrapDraft) -> BootstrapDraft:
+    """Gộp kết quả hai chặng. Trùng path thì bản sau thắng."""
+    files: dict[str, FileDraft] = {}
+    voice_profile = None
+    meta: dict = {}
+    notes: list[str] = []
+
+    for d in drafts:
+        if d is None:
+            continue
+        for f in d.files:
+            files[f.path] = f
+        if d.voice_profile:
+            voice_profile = d.voice_profile
+        meta.update(d.brand_meta or {})
+        notes.extend(d.notes or [])
+
+    return BootstrapDraft(
+        files=list(files.values()),
+        voice_profile=voice_profile,
+        brand_meta=meta,
+        notes=notes,
+    )
+
+
+def build_creation_preview(
+    manager: BrandManager,
+    voice: Optional[VoiceExtraction],
+    brand: Optional[BrandExtraction],
+    name_hint: str = "",
+) -> CreationPreview:
+    """
+    Dựng toàn bộ đề xuất cho một brand chưa tồn tại.
+
+    Không chạm đĩa ngoài việc kiểm mã brand đã bị dùng chưa.
+    """
+    name = (name_hint or "").strip()
+    if not name and brand is not None:
+        name = (brand.brand_name or "").strip()
+    if not name:
+        name = "Brand mới"
+
+    suggested_id = slugify_brand_id(name)
+
+    description = ""
+    if brand is not None:
+        description = (brand.short_description or "").strip()
+
+    # Brand chưa tồn tại nên không có gì để đối chiếu — dựng draft với một
+    # manager "rỗng" bằng cách dùng brand_id chưa có thật.
+    parts = []
+    if voice is not None:
+        parts.append(build_voice_draft(manager, suggested_id, name, voice))
+    if brand is not None:
+        parts.append(build_brand_draft(manager, suggested_id, name, brand))
+
+    draft = _merge_drafts(*parts)
+
+    from src.knowledge.brand_manager import completeness_from_contents
+
+    completeness = completeness_from_contents({f.path: f.content for f in draft.files})
+
+    return CreationPreview(
+        identity=BrandIdentityProposal(
+            name=name,
+            suggested_id=suggested_id,
+            description=description,
+            id_taken=manager.get_brand(suggested_id) is not None,
+        ),
+        draft=draft,
+        completeness=completeness,
+    )
+
+
+def extract_for_creation(
+    samples: list[str], documents: list[str]
+) -> tuple[Optional[VoiceExtraction], Optional[BrandExtraction]]:
+    """
+    Chạy hai chặng song song. Thiếu loại tài liệu nào thì bỏ qua chặng đó —
+    một trong hai là đủ để tạo brand.
+
+    Hai prompt có lập trường ngược nhau (một cái mô tả cách brand đang viết,
+    một cái coi tài liệu là nguồn sự thật) nên cố tình KHÔNG gộp thành một
+    lượt gọi.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    samples = [s for s in samples if s.strip()]
+    documents = [d for d in documents if d.strip()]
+    if not samples and not documents:
+        raise ValueError("Chưa có tài liệu nào để đọc.")
+
+    check_input_size(samples + documents)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_voice = pool.submit(extract_voice, samples) if samples else None
+        fut_brand = pool.submit(extract_brand, documents) if documents else None
+
+        voice = fut_voice.result() if fut_voice else None
+        brand = fut_brand.result() if fut_brand else None
+
+    return voice, brand
+
+
+def create_brand_from_draft(
+    manager: BrandManager,
+    brand_id: str,
+    name: str,
+    description: str,
+    draft_files: list[FileDraft],
+    voice_profile: Optional[dict] = None,
+    brand_meta: Optional[dict] = None,
+    sources: Optional[dict[str, str]] = None,
+    icon: str = "📦",
+    color: str = "#6c5ce7",
+) -> dict:
+    """
+    Tạo brand rồi ghi phần đã duyệt, theo đúng thứ tự đó.
+
+    Nếu ghi hỏng giữa chừng, brand vẫn tồn tại và người dùng bấm lưu lại được
+    từ tab Nạp liệu — bản draft nằm ở trình duyệt nên không phải trả tiền đọc
+    lại lần nữa. Vì thế ở đây KHÔNG xoá brand khi lỗi: xoá đi mới là mất.
+    """
+    manager.create_brand(brand_id, name, description, color=color, icon=icon)
+
+    if voice_profile:
+        voice_profile = {**voice_profile, "profile_id": brand_id}
+
+    result = apply_draft(
+        manager, brand_id, draft_files, voice_profile=voice_profile, brand_meta=brand_meta
+    )
+
+    for source_name, text in (sources or {}).items():
+        try:
+            result["written"].append(manager.save_source(brand_id, source_name, text))
+        except Exception as e:
+            # Lưu tài liệu gốc là tiện ích, hỏng thì không được kéo theo cả brand
+            logger.warning("Không lưu được tài liệu gốc %s: %s", source_name, e)
+
+    result["brand_id"] = brand_id
+    logger.info("Tạo brand %s từ tài liệu: %s", brand_id, ", ".join(result["written"]))
+    return result

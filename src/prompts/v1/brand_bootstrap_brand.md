@@ -21,6 +21,14 @@ mà trung thực thì tốt hơn một bộ khung đầy đủ mà nửa bịa.
 
 ## Cách rút từng nhóm
 
+### brand_name và short_description
+Chỉ dùng khi người dùng đang tạo brand mới từ chính tài liệu này.
+
+- `brand_name`: tên brand **đúng như tài liệu gọi**. Tài liệu không nêu tên thì
+  để rỗng — đừng tự đặt tên cho người ta.
+- `short_description`: một câu, brand làm gì và ở đâu. Kiểu "Quán cà phê
+  specialty tại quận 1" hoặc "Dịch vụ xem tử vi online". Không phải khẩu hiệu.
+
 ### identity
 Brand là ai, làm gì, cho ai. 2–5 câu. Viết bằng dữ kiện trong tài liệu, không
 tô vẽ.

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
 import { Plus, Trash2, X } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import BrandCreate from '../components/BrandCreate';
 
 const BRAND_ICONS = ['📦', '☕', '💅', '🏠', '🎵', '📱', '🎨', '🍕', '✦', '🌿', '💎', '🔥'];
 
@@ -39,6 +40,8 @@ export default function BrandsPage() {
   const { showToast, Toast } = useToast();
   const [brands, setBrands] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
+  // Lối thoát cho ai chưa có tài liệu gì: form 4 ô như cũ
+  const [showEmptyCreate, setShowEmptyCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newBrand, setNewBrand] = useState({ id: '', name: '', description: '', icon: '📦', color: '#2f3e86' });
 
@@ -59,7 +62,7 @@ export default function BrandsPage() {
     if (!newBrand.id || !newBrand.name) return;
     try {
       await brandsAPI.create(newBrand);
-      setShowCreate(false);
+      setShowEmptyCreate(false);
       const id = newBrand.id;
       setNewBrand({ id: '', name: '', description: '', icon: '📦', color: '#2f3e86' });
       // Brand mới chỉ có file rỗng kèm placeholder. Bỏ người dùng lại ở danh
@@ -96,9 +99,20 @@ export default function BrandsPage() {
       </header>
 
       {showCreate && (
+        <div className="mb-6">
+          <BrandCreate
+            showToast={showToast}
+            onCancel={() => setShowCreate(false)}
+            onCreated={(id) => navigate(`/knowledge/${id}`)}
+            onEmptyBrand={() => { setShowCreate(false); setShowEmptyCreate(true); }}
+          />
+        </div>
+      )}
+
+      {showEmptyCreate && (
         <div className="sheet p-6 mb-6 rise relative">
           <button
-            onClick={() => setShowCreate(false)}
+            onClick={() => setShowEmptyCreate(false)}
             aria-label="Đóng"
             className="btn btn-quiet !p-2 absolute top-3 right-3"
           >
@@ -177,7 +191,7 @@ export default function BrandsPage() {
             <button onClick={createBrand} disabled={!newBrand.id || !newBrand.name} className="btn btn-primary">
               Tạo brand
             </button>
-            <button onClick={() => setShowCreate(false)} className="btn btn-quiet">Huỷ</button>
+            <button onClick={() => setShowEmptyCreate(false)} className="btn btn-quiet">Huỷ</button>
           </div>
         </div>
       )}

@@ -132,6 +132,10 @@ export const brandsAPI = {
     api.post(`/brands/${brandId}/bootstrap/brand`, { documents }),
   bootstrapApply: (brandId, payload) =>
     api.post(`/brands/${brandId}/bootstrap/apply`, payload),
+
+  // Tạo brand TỪ tài liệu: đọc trước (chưa tạo gì), duyệt rồi mới tạo
+  bootstrapPreview: (payload) => api.post('/brands/bootstrap/preview', payload),
+  bootstrapCreate: (payload) => api.post('/brands/bootstrap/create', payload),
 };
 
 export const templatesAPI = {

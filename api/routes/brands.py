@@ -9,6 +9,7 @@ from typing import Optional
 
 from src.knowledge import brand_bootstrap
 from src.knowledge.brand_manager import BrandExistsError, BrandManager
+from src.utils.paths import validate_id
 
 router = APIRouter()
 manager = BrandManager()
@@ -51,6 +52,33 @@ class BootstrapVoiceRequest(BaseModel):
 class BootstrapBrandRequest(BaseModel):
     """Chặng 2 — tài liệu về brand và khách hàng."""
     documents: list[str] = Field(min_length=1)
+
+
+class CreationPreviewRequest(BaseModel):
+    """
+    Tài liệu để dựng một brand CHƯA TỒN TẠI.
+
+    Hai loại tài liệu đều không bắt buộc, nhưng phải có ít nhất một —
+    kiểm ở tầng route để báo lỗi rõ hơn là để Pydantic báo chung chung.
+    """
+    samples: list[str] = Field(default_factory=list)     # bài đã đăng
+    documents: list[str] = Field(default_factory=list)   # tài liệu brand
+    name_hint: str = ""                                  # người dùng gõ sẵn tên
+
+
+class CreateFromDraftRequest(BaseModel):
+    """Tạo brand thật, sau khi người dùng đã duyệt bản đề xuất."""
+    id: str
+    name: str
+    description: str = ""
+    color: str = "#6c5ce7"
+    icon: str = "📦"
+    files: list[brand_bootstrap.FileDraft] = Field(default_factory=list)
+    voice_profile: Optional[dict] = None
+    brand_meta: Optional[dict] = None
+    # Nguyên văn tài liệu đã dán, lưu lại để sau đọc lại được bằng prompt tốt
+    # hơn mà không phải đi tìm bài cũ. Không bắt buộc.
+    sources: dict[str, str] = Field(default_factory=dict)
 
 
 class ApplyDraftRequest(BaseModel):
@@ -226,3 +254,60 @@ def bootstrap_apply(brand_id: str, req: ApplyDraftRequest):
         voice_profile=req.voice_profile,
         brand_meta=req.brand_meta,
     )
+
+
+# === Tạo brand TỪ tài liệu ===
+#
+# Khác với /bootstrap/{voice,brand} ở trên (chạy trên brand đã có để bổ sung),
+# hai endpoint này chạy khi CHƯA có brand: đọc tài liệu trước, đề xuất cả tên
+# lẫn mã brand, rồi mới tạo. Tài liệu là điểm xuất phát.
+
+
+@router.post("/bootstrap/preview", response_model=brand_bootstrap.CreationPreview)
+def bootstrap_preview(req: CreationPreviewRequest):
+    """
+    Đọc tài liệu và dựng đề xuất cho một brand chưa tồn tại.
+
+    KHÔNG tạo gì cả. Trả về tên/mã đề xuất, các file sẽ ghi, và điểm hoàn
+    thiện dự kiến để người dùng biết brand sẽ bắt đầu ở mức nào.
+    """
+    if not any(c.strip() for c in req.samples + req.documents):
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Cần ít nhất một bài đã đăng hoặc một tài liệu về brand."},
+        )
+    _guard_size(req.samples + req.documents)
+
+    try:
+        voice, brand = brand_bootstrap.extract_for_creation(req.samples, req.documents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"message": str(e)}) from e
+
+    return brand_bootstrap.build_creation_preview(manager, voice, brand, req.name_hint)
+
+
+@router.post("/bootstrap/create")
+def bootstrap_create(req: CreateFromDraftRequest):
+    """Tạo brand thật từ bản đề xuất người dùng đã duyệt và chỉnh."""
+    validate_id(req.id, "brand_id")
+
+    if manager.get_brand(req.id):
+        raise HTTPException(status_code=409, detail="Brand already exists")
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail={"message": "Brand cần có tên."})
+
+    try:
+        return brand_bootstrap.create_brand_from_draft(
+            manager,
+            req.id,
+            req.name.strip(),
+            req.description.strip(),
+            req.files,
+            voice_profile=req.voice_profile,
+            brand_meta=req.brand_meta,
+            sources=req.sources,
+            icon=req.icon,
+            color=req.color,
+        )
+    except BrandExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
