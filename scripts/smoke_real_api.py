@@ -1,4 +1,15 @@
-"""Test script — isolated node testing."""
+"""
+Smoke test THỦ CÔNG — gọi Anthropic API THẬT, có tốn tiền.
+
+Đây KHÔNG phải test tự động. Test tự động nằm ở tests/ và không gọi API
+(mọi node LLM đều được monkeypatch). Script này để xác nhận bằng mắt rằng
+prompt và structured output còn hoạt động với model thật:
+
+    python scripts/smoke_real_api.py all
+    python scripts/smoke_real_api.py strategist
+
+Cần ANTHROPIC_API_KEY trong .env.
+"""
 import sys
 import os
 from pathlib import Path
@@ -6,9 +17,16 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-os.chdir(Path(__file__).resolve().parent)
+# Script nằm trong scripts/ nhưng phải chạy từ gốc project để các đường dẫn
+# tương đối (knowledge_base/, outputs/, src/prompts/) trỏ đúng.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.trace import RunTrace
+from src.utils.logging_config import setup_logging
+
+setup_logging()
 
 
 def test_brief_parser():

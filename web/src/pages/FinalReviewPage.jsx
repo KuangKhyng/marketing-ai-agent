@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { campaignAPI } from '../api/client';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { useProgress } from '../hooks/useProgress';
 
 /* Ngưỡng đạt khớp với THRESHOLDS trong src/nodes/reviewer.py.
    Hiển thị ngưỡng để người dùng biết còn cách bao xa, thay vì chỉ thấy đạt/trượt. */
@@ -16,6 +18,8 @@ const DIMENSIONS = {
 
 export default function FinalReviewPage({ campaignData, setCampaignData, setPhase, loading, setLoading }) {
   const { showToast, Toast } = useToast();
+  const { steps, start, stop } = useProgress();
+  const [retrying, setRetrying] = useState(false);
   const result = campaignData?.review_result;
 
   const handleApprove = async () => {
@@ -31,8 +35,26 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
     }
   };
 
+  /* Nhánh "retry" của LangGraph, nhưng do người dùng bấm: hệ thống tự sửa
+     theo hướng dẫn của reviewer rồi chấm lại. Mỗi lần là một lượt gọi API
+     tốn tiền nên không tự chạy. */
+  const handleRetry = async () => {
+    setRetrying(true);
+    await start(campaignData.run_id);
+    try {
+      const { data } = await campaignAPI.retryContent(campaignData.run_id);
+      setCampaignData(data);
+    } catch (err) {
+      showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
+    } finally {
+      stop();
+      setRetrying(false);
+    }
+  };
+
   if (!result) return null;
 
+  const canRetry = campaignData?.review_route === 'retry';
   const failed = result.dimension_scores.filter(s => !s.passed).length;
   const unavailable = result.review_unavailable;
 
@@ -156,16 +178,44 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
       )}
 
       <div className="flex flex-wrap gap-2.5 pt-6 border-t border-rule">
-        <button onClick={() => setPhase('content_review')} disabled={loading} className="btn btn-quiet">
+        <button
+          onClick={() => setPhase('content_review')}
+          disabled={loading || retrying}
+          className="btn btn-quiet"
+        >
           <ArrowLeft className="w-4 h-4" /> Sửa nội dung
         </button>
-        <button onClick={handleApprove} disabled={loading} className="btn btn-primary">
+        {canRetry && (
+          <button onClick={handleRetry} disabled={loading || retrying} className="btn btn-default">
+            {retrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Hệ thống sửa lại
+          </button>
+        )}
+        <button
+          onClick={handleApprove}
+          disabled={loading || retrying}
+          className="btn btn-primary"
+        >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {result.overall_passed ? 'Bàn giao' : 'Vẫn bàn giao'}
         </button>
       </div>
 
+      {campaignData?.review_route === 'max_retries' && (
+        <p className="mt-3 text-[0.8125rem] text-ink-3">
+          Đã dùng hết lượt sửa tự động ({campaignData.revision_count}/2). Sửa tay ở bước
+          trước, hoặc bàn giao và tự chịu trách nhiệm nội dung.
+        </p>
+      )}
+
       <LoadingOverlay show={loading} title="Đang kết xuất" description="Ghi file bàn giao." hint="Thường mất vài giây." />
+      <LoadingOverlay
+        show={retrying}
+        title="Đang sửa lại nội dung"
+        description="Viết lại theo hướng dẫn của phần chấm, rồi chấm lại."
+        hint="Thường mất 40–90 giây."
+        steps={steps}
+      />
       <Toast />
     </div>
   );

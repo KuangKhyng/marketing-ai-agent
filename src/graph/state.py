@@ -47,3 +47,5 @@ class CampaignState(TypedDict):
     error: Optional[str]                        # error message if any
     warnings: list[str]                         # sự cố không chặn pipeline nhưng user cần biết
                                                 # (vd: 1 trong 3 kênh render thất bại)
+    review_route: Optional[str]                 # kết quả route_after_review: passed/retry/max_retries.
+                                                # Graph đi theo nó ngay; nhánh web lưu lại để hỏi user.

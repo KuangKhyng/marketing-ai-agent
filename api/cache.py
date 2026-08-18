@@ -20,12 +20,15 @@ TTL = 24h (theo file mtime).
 Run đã đi qua vòng sửa của user thì không đọc/ghi cache — xem `is_cacheable`.
 """
 import hashlib
+import logging
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
 
 from src.config.settings import PROJECT_ROOT
+
+logger = logging.getLogger(__name__)
 
 _CACHE_DIR = PROJECT_ROOT / "outputs" / "cache"
 _TTL = timedelta(hours=24)
@@ -87,8 +90,8 @@ class CampaignCache:
         if self._valid(path):
             try:
                 return path.read_text(encoding="utf-8")
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning("Không đọc được strategy cache %s: %s", path, e)
         return None
 
     def set_strategy(
@@ -97,8 +100,8 @@ class CampaignCache:
         try:
             key = self.strategy_key(raw_input, brand_id, brief)
             (self._dir(key) / "strategy.txt").write_text(strategy, encoding="utf-8")
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Không ghi được strategy cache: %s", e)
 
     # === Content (phase 3) ===
 
@@ -121,7 +124,9 @@ class CampaignCache:
             try:
                 with open(path, "rb") as f:
                     return pickle.load(f)
-            except Exception:
+            except Exception as e:
+                # Thường là schema đã đổi — xoá để lần sau khỏi thử lại
+                logger.info("Bỏ content cache không đọc được %s: %s", path, e)
                 path.unlink(missing_ok=True)
         return None
 
@@ -141,8 +146,8 @@ class CampaignCache:
                     {"master_message": master_message, "campaign_content": campaign_content},
                     f,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Không ghi được content cache: %s", e)
 
 
 campaign_cache = CampaignCache()

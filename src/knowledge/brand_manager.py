@@ -25,6 +25,10 @@ BRANDS_DIR = KNOWLEDGE_DIR / "brands"
 GLOBAL_DIR = KNOWLEDGE_DIR / "_global"
 
 
+class BrandExistsError(Exception):
+    """Đã có dữ liệu ở thư mục brand này — route layer map thành HTTP 409."""
+
+
 class BrandManager:
     """Manages brand knowledge base operations."""
 
@@ -103,8 +107,19 @@ class BrandManager:
         color: str = "#6c5ce7",
         icon: str = "📦",
     ) -> dict:
-        """Create a new brand with default template files."""
+        """
+        Create a new brand with default template files.
+
+        Route đã kiểm brand tồn tại chưa bằng get_brand(), nhưng get_brand trả
+        None khi thiếu brand.json — thư mục có sẵn mà thiếu file meta (tạo dở,
+        hoặc ghi lỗi) sẽ lọt qua và bị ghi đè identity.md / tone_of_voice.md /
+        voice_profile.json. Chặn ở đây, nơi biết chắc.
+        """
         brand_dir = self._brand_dir(brand_id)
+        if brand_dir.exists() and any(brand_dir.iterdir()):
+            raise BrandExistsError(
+                f"Thư mục brand '{brand_id}' đã tồn tại và không rỗng"
+            )
         brand_dir.mkdir(parents=True, exist_ok=True)
 
         # Create subdirectories
@@ -307,7 +322,8 @@ class BrandManager:
             "sections": sections,
             "total_size_bytes": total_size,
             "estimated_tokens": estimated_tokens,
-            "context_usage_percent": round(estimated_tokens / 150000 * 100, 1),
+            # Claude context window thật là 200k, không phải 150k
+            "context_usage_percent": round(estimated_tokens / 200_000 * 100, 1),
         }
 
     # === Internal helpers ===

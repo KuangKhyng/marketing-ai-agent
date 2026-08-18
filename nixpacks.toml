@@ -5,6 +5,13 @@ NIXPACKS_NODE_VERSION = "20"
 
 [phases.build]
 cmds = [
-    "cd web && npm install && npm run build",
-    "pip install -r requirements.txt"
+    # npm ci (không phải npm install) để build dùng đúng version trong
+    # package-lock.json. --include=dev vì vite/tailwind là devDependencies mà
+    # vẫn cần để build, kể cả khi NODE_ENV=production.
+    "cd web && npm ci --include=dev && npm run build",
+    "pip install -r requirements.txt",
+    # Volume mount vào /app/knowledge_base sẽ CHE nội dung đã commit ở đó.
+    # Copy ra seed_knowledge/ lúc build (trước khi mount) để startup còn cái
+    # mà nạp vào volume trắng — xem src/knowledge/seed.py.
+    "cp -r knowledge_base seed_knowledge",
 ]

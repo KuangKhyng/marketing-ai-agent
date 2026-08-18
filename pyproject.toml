@@ -4,32 +4,31 @@ version = "0.1.0"
 description = "Marketing Agent Workflow Engine — multi-step pipeline for social media campaign content generation"
 requires-python = ">=3.11"
 
+# Phải khớp requirements.txt — đó là file nixpacks thật sự cài trên Railway.
+# fastapi/uvicorn nằm ở đây chứ không phải extra "ui": chúng là core của app,
+# không phải tuỳ chọn.
 dependencies = [
-    "langgraph>=0.4",
-    "langchain-anthropic>=0.3",
-    "langchain-core>=0.3",
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
-    "rich>=13.0",
-    "python-dotenv>=1.0",
+    "fastapi>=0.110,<1",
+    "uvicorn>=0.27,<1",
+    "langgraph>=1.1,<2",
+    "langchain-anthropic>=1.4,<2",
+    "langchain-core>=1.3,<2",
+    "pydantic>=2.0,<3",
+    "pyyaml>=6.0,<7",
+    "rich>=13.0,<16",
+    "python-dotenv>=1.0,<2",
+    # Dùng trực tiếp trong src/nodes/channel_renderer.py
+    "anthropic>=0.96,<1",
+    "tenacity>=8.1,<10",
 ]
 
+# Đã bỏ các extra khai báo cho thứ không tồn tại: "rag" (chromadb — retrieval
+# thật là keyword scoring trong src/knowledge/retriever.py, không có vector
+# store), "eval" (pandas — chưa có eval harness), "ui" (fastapi đã lên core).
 [project.optional-dependencies]
-rag = [
-    "chromadb>=0.5",
-    "langchain-chroma>=0.2",
-]
-eval = [
-    "pandas>=2.0",
-]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",      # fastapi.testclient cần
-]
-ui = [
-    "fastapi>=0.111.0",
-    "uvicorn>=0.30.0",
-    "pydantic>=2.0",
 ]
 
 [project.scripts]

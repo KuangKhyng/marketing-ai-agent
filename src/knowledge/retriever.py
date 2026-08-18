@@ -15,6 +15,7 @@ Supports two modes:
 - generic: No brand context, generic voice profile
 """
 import json
+import logging
 import re
 from pathlib import Path
 from functools import lru_cache
@@ -23,6 +24,8 @@ from hashlib import md5
 from src.models.brief import CampaignBrief
 from src.config.settings import PROJECT_ROOT
 from src.utils.paths import InvalidPathError, safe_join, validate_id
+
+logger = logging.getLogger(__name__)
 
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
@@ -93,7 +96,11 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
             brand_dir = None
 
         if brand_dir is None or not brand_dir.exists():
-            # Brand not found — fall back to generic
+            # Brand không tồn tại (vd: bị xoá giữa run) — rơi về generic.
+            # Content sẽ mất giọng brand nên phải log, đừng lặng lẽ.
+            logger.warning(
+                "Brand '%s' không tìm thấy — sinh content ở chế độ generic", brand_id
+            )
             context["mode"] = "generic"
             context["voice_profile"] = _get_generic_voice_profile()
             context["policies"] = "\n\n---\n\n".join(policies_parts)
@@ -142,10 +149,13 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
                 context["loaded_docs"].append(f"brand_policy:{f.stem}")
 
         # Brand metadata (forbidden claims, mandatory terms)
+        # Chỉ lấy tên brand. forbidden_claims / mandatory_terms KHÔNG đi qua
+        # đây — brief_parser._override_brand_from_state nạp chúng vào
+        # brief.brand từ brand.json, và reviewer đọc từ brief. Trước đây cả
+        # meta được nhét vào context["brand_meta"] mà không ai đọc.
         meta_path = brand_dir / "brand.json"
         if meta_path.exists():
             meta = json.loads(_read_file(meta_path))
-            context["brand_meta"] = meta
             context["brand_name"] = meta.get("name", "")
 
     else:
@@ -219,11 +229,25 @@ def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[st
     scored.sort(key=lambda x: x[1], reverse=True)
 
     # Take top matches with score > 0, up to max_files
-    matches = [f for f, s in scored if s > 0][:max_files]
+    relevant = [f for f, s in scored if s > 0]
+    matches = relevant[:max_files]
 
     if not matches:
         # No keyword match at all — load first file as fallback
+        logger.info(
+            "Không file nào trong %s khớp từ khoá — dùng %s làm mặc định",
+            directory.name, files[0].name,
+        )
         matches = [files[0]]
+    elif len(relevant) > max_files:
+        # Retrieval ở đây là keyword scoring đơn giản, không phải vector search.
+        # File bị cắt bỏ vẫn có thể liên quan — log để biết context đang thiếu
+        # gì, thay vì âm thầm bỏ.
+        logger.info(
+            "%s: có %d file khớp nhưng chỉ nạp %d — bỏ %s",
+            directory.name, len(relevant), max_files,
+            ", ".join(f.name for f in relevant[max_files:]),
+        )
 
     parts = [_read_file(f) for f in matches]
     loaded_names = [f.stem for f in matches]

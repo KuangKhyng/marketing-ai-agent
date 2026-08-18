@@ -2,20 +2,22 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import asyncio
 import json
-import queue as _queue
+import logging
 import uuid
 import os
 import pickle
 
 from api.schemas import (
     CampaignInput, BriefEdit, StrategyFeedback,
-    ContentFeedback, PipelineStatus,
+    ContentFeedback, PipelineStatus, QuickActionRequest,
 )
 from api.pipeline_runner import PipelineRunner
 from api.events import progress_bus
 from api.cache import campaign_cache, is_cacheable
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 from datetime import datetime, timedelta
 from threading import Lock
@@ -42,25 +44,41 @@ class SessionStore:
     """
     def __init__(self, ttl_minutes: int = 120):
         self._cache: dict[str, PipelineRunner] = {}
+        # Mốc thời gian trong memory, dùng khi không có file trên disk để soi
+        # mtime (persist có thể đã thất bại). Không có nó thì session nào
+        # thiếu file sẽ sống mãi trong RAM.
+        self._touched: dict[str, datetime] = {}
         self._lock = Lock()
         self.ttl = timedelta(minutes=ttl_minutes)
 
     def set(self, run_id: str, runner: PipelineRunner):
         with self._lock:
             self._cache[run_id] = runner
+            self._touched[run_id] = datetime.now()
             self._persist(run_id, runner)
+
+    def _drop(self, run_id: str) -> None:
+        self._cache.pop(run_id, None)
+        self._touched.pop(run_id, None)
+
+    def _age(self, run_id: str) -> timedelta:
+        """Tuổi của session: ưu tiên mtime file, không có thì mốc in-memory."""
+        state_file = self._state_path(run_id)
+        if state_file.exists():
+            return datetime.now() - datetime.fromtimestamp(state_file.stat().st_mtime)
+        touched = self._touched.get(run_id)
+        if touched is None:
+            return timedelta(0)
+        return datetime.now() - touched
 
     def get(self, run_id: str) -> PipelineRunner | None:
         with self._lock:
             # 1. Try in-memory cache first
             if run_id in self._cache:
-                state_file = self._state_path(run_id)
-                if state_file.exists():
-                    age = datetime.now() - datetime.fromtimestamp(state_file.stat().st_mtime)
-                    if age > self.ttl:
-                        del self._cache[run_id]
-                        state_file.unlink(missing_ok=True)
-                        return None
+                if self._age(run_id) > self.ttl:
+                    self._drop(run_id)
+                    self._state_path(run_id).unlink(missing_ok=True)
+                    return None
                 return self._cache[run_id]
 
             # 2. Try restoring from disk (server restarted)
@@ -74,13 +92,16 @@ class SessionStore:
         return safe_join(_SESSIONS_DIR, run_id, "state.pkl")
 
     def _persist(self, run_id: str, runner: PipelineRunner):
+        self._touched[run_id] = datetime.now()
         path = self._state_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with open(path, "wb") as f:
                 pickle.dump({"version": _STATE_VERSION, "state": runner.state}, f)
-        except Exception:
-            pass  # Persist failure không được làm crash request
+        except Exception as e:
+            # Không được làm crash request, nhưng phải biết: mất persist nghĩa
+            # là user F5 hoặc server restart là mất phiên.
+            logger.error("Không persist được session %s: %s", run_id, e)
 
     def _restore(self, run_id: str) -> PipelineRunner | None:
         path = self._state_path(run_id)
@@ -95,13 +116,20 @@ class SessionStore:
                 payload = pickle.load(f)
             # File của phiên bản schema khác (hoặc format cũ, chưa có version)
             if not isinstance(payload, dict) or payload.get("version") != _STATE_VERSION:
+                logger.info(
+                    "Bỏ state.pkl của run %s: sai version schema (cần %s)",
+                    run_id, _STATE_VERSION,
+                )
                 path.unlink(missing_ok=True)
                 return None
             runner = PipelineRunner()
             runner.state = payload["state"]
             self._cache[run_id] = runner
+            self._touched[run_id] = datetime.now()
+            logger.info("Khôi phục session %s từ disk", run_id)
             return runner
-        except Exception:
+        except Exception as e:
+            logger.warning("Không khôi phục được session %s: %s", run_id, e)
             path.unlink(missing_ok=True)
             return None
 
@@ -134,23 +162,29 @@ async def stream_events(run_id: str, request: Request):
     Events: {"type": "node_start"|"node_done"|"cache_hit"|"done", "node": str, "message": str}
     Stream closes automatically when the phase completes (sentinel None).
     """
-    q = progress_bus.create(run_id)
+    sub = progress_bus.subscribe(run_id)
 
     async def generate():
-        loop = asyncio.get_event_loop()
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                msg = await loop.run_in_executor(
-                    None, lambda: q.get(block=True, timeout=1.0)
-                )
-                if msg is None:  # sentinel — phase done
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    # Chờ event mà KHÔNG chiếm thread nào của threadpool.
+                    # timeout để còn kịp phát keepalive và kiểm disconnect.
+                    msg = await asyncio.wait_for(sub.queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"  # SSE comment, giữ kết nối
+                    continue
+
+                if msg is None:  # sentinel — phase xong
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     break
                 yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
-            except _queue.Empty:
-                yield ": keepalive\n\n"  # SSE comment, keeps connection alive
+        finally:
+            # Client đi (đóng tab, mất mạng, hoặc xong) — dọn subscription,
+            # không để rò rỉ và không ảnh hưởng tab khác cùng run_id.
+            progress_bus.unsubscribe(run_id, sub)
 
     return StreamingResponse(
         generate(),
@@ -167,6 +201,7 @@ def _pipeline_error(state: dict) -> HTTPException:
     """Convert pipeline error into user-friendly HTTPException."""
     raw = state.get("error", "Unknown error")
     node = state.get("current_node", "")
+    logger.error("Pipeline lỗi ở node %s: %s", node or "?", raw)
     user_msg = _USER_MESSAGES.get(node, "Đã xảy ra lỗi. Vui lòng thử lại.")
     detail = {"message": user_msg}
     if _DEV_MODE:
@@ -389,12 +424,14 @@ def review_content(run_id: str, feedback: ContentFeedback):
         content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
         review_result=state["review_result"].model_dump() if state.get("review_result") else None,
         warnings=state.get("warnings") or [],
+        review_route=state.get("review_route"),
+        revision_count=state.get("revision_count", 0),
         cost_estimate=state["trace"].total_cost_estimate,
     )
 
 
 @router.post("/{run_id}/quick-action")
-def quick_action(run_id: str, action: dict):
+def quick_action(run_id: str, action: QuickActionRequest):
     """
     Quick action on a single content piece.
     Actions: rewrite, change_hook, change_tone, shorter, longer
@@ -406,13 +443,12 @@ def quick_action(run_id: str, action: dict):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    piece_index = action.get("piece_index", 0)
-    action_type = action.get("action", "rewrite")
+    piece_index = action.piece_index
+    action_type = action.action.value
     pieces = runner.state["campaign_content"].pieces
 
-    # Chặn cả index âm: pieces[-1] là hợp lệ trong Python nên index âm sẽ sửa
-    # âm thầm vào piece khác.
-    if not isinstance(piece_index, int) or not 0 <= piece_index < len(pieces):
+    # piece_index >= 0 đã do schema đảm bảo; chỉ còn chặn vượt số piece
+    if piece_index >= len(pieces):
         raise HTTPException(status_code=400, detail="Invalid piece index")
 
     piece = pieces[piece_index]
@@ -453,6 +489,48 @@ def quick_action(run_id: str, action: dict):
         "word_count": piece.word_count,
         "action": action_type,
     }
+
+@router.post("/{run_id}/retry-content", response_model=PipelineStatus)
+def retry_content(run_id: str):
+    """
+    Sửa lại nội dung theo đúng hướng dẫn của reviewer, rồi chấm lại.
+
+    Đây là nhánh "retry" của LangGraph (xem src/graph/workflow.py), nhưng do
+    người dùng bấm thay vì tự chạy — mỗi vòng là một lượt gọi API tốn tiền.
+    """
+    runner = sessions.get(run_id)
+    if not runner:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not runner.can_retry():
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Đã hết lượt sửa tự động. Hãy sửa tay hoặc bàn giao.",
+            },
+        )
+
+    def push(event):
+        progress_bus.push(run_id, event)
+
+    state = runner.retry_content(on_progress=push)
+    progress_bus.close(run_id)
+    _save_session(run_id, runner)
+
+    if state.get("error"):
+        raise _pipeline_error(state)
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase="final_review",
+        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+        warnings=state.get("warnings") or [],
+        review_route=state.get("review_route"),
+        revision_count=state.get("revision_count", 0),
+        cost_estimate=state["trace"].total_cost_estimate,
+    )
+
 
 @router.post("/{run_id}/approve-final", response_model=PipelineStatus)
 def approve_final(run_id: str):
@@ -565,6 +643,7 @@ def get_run(run_id: str):
         content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
         review_result=state["review_result"].model_dump() if state.get("review_result") else None,
         warnings=state.get("warnings") or [],
+        review_route=state.get("review_route"),
         revision_count=state.get("revision_count", 0),
         cost_estimate=trace.total_cost_estimate if trace else 0.0,
     )

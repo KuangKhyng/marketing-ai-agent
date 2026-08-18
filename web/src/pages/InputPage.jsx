@@ -354,8 +354,79 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
       </div>
       </motion.div>
 
+      <RecentRuns />
+
       <Toast />
     </div>
+  );
+}
+
+/*
+ * Chiến dịch đã chạy trước đó.
+ *
+ * GET /campaigns/history vốn đã có nhưng không nơi nào gọi. Ở đây chỉ hiện
+ * bản đã kết xuất kèm link tải: phiên làm việc hết hạn sau 120 phút nên
+ * không hứa mở lại được, còn file trong outputs/ thì vẫn còn.
+ */
+function RecentRuns() {
+  const [runs, setRuns] = useState([]);
+
+  useEffect(() => {
+    campaignAPI.history()
+      .then(res => setRuns((res.data || []).slice(0, 5)))
+      .catch(() => {});   // không có lịch sử thì thôi, không phải lỗi
+  }, []);
+
+  /* Tải qua axios chứ không phải <a href>: endpoint nằm sau X-API-Key nên
+     link thẳng sẽ nhận 401. */
+  const download = async (runId, format) => {
+    try {
+      const res = await campaignAPI.download(runId, format);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `campaign-${runId}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      /* file đã bị xoá khỏi outputs/ — không có gì để tải */
+    }
+  };
+
+  if (runs.length === 0) return null;
+
+  return (
+    <section className="mt-12 pt-8 border-t border-rule">
+      <p className="t-label mb-3">Chiến dịch đã chạy</p>
+      <div className="sheet divide-y divide-rule">
+        {runs.map(run => (
+          <div key={run.run_id} className="px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-[0.9375rem] truncate">
+                {run.brief_summary || 'Chiến dịch không tên'}
+              </p>
+              <p className="font-data text-[0.75rem] text-ink-3 mt-0.5">
+                {run.run_id}
+                {run.timestamp && ` · ${new Date(run.timestamp).toLocaleString('vi-VN')}`}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              {['md', 'json'].map(fmt => (
+                <button
+                  key={fmt}
+                  onClick={() => download(run.run_id, fmt)}
+                  className="btn btn-quiet !py-1.5 !px-2.5 !text-[0.75rem]"
+                >
+                  .{fmt}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

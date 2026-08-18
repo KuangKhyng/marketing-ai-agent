@@ -1,11 +1,22 @@
 """
-Pipeline Runner — wraps existing nodes into callable phases.
-Used by FastAPI endpoints. Does NOT use LangGraph interrupt().
+Pipeline Runner — bọc các node thành từng phase gọi được.
 
-SOURCE OF TRUTH: This is the only PipelineRunner. src/web/pipeline.py đã bị xóa.
+Dùng bởi FastAPI. KHÔNG dùng LangGraph interrupt() vì tầng HTTP tự quản phiên
+làm việc (xem SessionStore trong api/routes/campaign.py).
+
+QUAN HỆ VỚI src/graph/:
+    Cùng gọi CÙNG các node trong src/nodes/ và CÙNG hàm routing
+    src/graph/edges.route_after_review. Thứ tự node phải khớp workflow.py —
+    tests/test_parity.py chạy cùng một brief qua cả hai đường và so kết quả để
+    phát hiện lệch.
+
+    Khác biệt DUY NHẤT là chủ ý: khi review trượt, graph tự vòng lại
+    message_architect; runner trả route ra cho người dùng quyết (xem
+    retry_content). Vì mỗi lần vòng lại là tốn tiền API nên web hỏi trước.
 """
 from typing import Callable, Optional
 
+from src.graph.edges import route_after_review
 from src.nodes.brief_parser import brief_parser_node
 from src.nodes.context_builder import context_builder_node
 from src.nodes.strategist import strategist_node
@@ -96,7 +107,41 @@ class PipelineRunner:
         _emit(on_progress, "reviewer")
         self.state.update(reviewer_node(self.state))
         _emit(on_progress, "reviewer", done=True)
+
+        # Cùng hàm mà graph dùng ở conditional edge sau reviewer. Ở đây chỉ
+        # LƯU quyết định chứ không tự đi tiếp — người dùng bấm mới đi.
+        #   "passed"      -> xuất bản được
+        #   "retry"       -> nên sửa lại, còn lượt
+        #   "max_retries" -> hết lượt sửa, muốn xuất thì phải tự chịu
+        self.state["review_route"] = route_after_review(self.state)
         return self.state
+
+    def retry_content(self, on_progress: _ProgressFn = None) -> dict:
+        """
+        Làm đúng việc nhánh "retry" của graph: quay lại message_architect với
+        revision_instructions của reviewer, rồi render và chấm lại.
+
+        Graph làm tự động; ở đây phải do người dùng bấm.
+        """
+        # Giữ nguyên review_result để message_architect đọc được feedback,
+        # y như graph (graph không xoá review_result khi vòng lại).
+        _emit(on_progress, "message_architect")
+        self.state.update(message_architect_node(self.state))
+        _emit(on_progress, "message_architect", done=True)
+        if self.state.get("error"):
+            return self.state
+
+        _emit(on_progress, "channel_renderer")
+        self.state.update(channel_renderer_node(self.state))
+        _emit(on_progress, "channel_renderer", done=True)
+        if self.state.get("error"):
+            return self.state
+
+        return self.phase_4_review(on_progress=on_progress)
+
+    def can_retry(self) -> bool:
+        """Còn lượt sửa lại không — cùng ngưỡng mà graph dùng."""
+        return self.state.get("review_route") == "retry"
 
     def phase_5_export(self) -> dict:
         self.state.update(formatter_node(self.state))
@@ -143,4 +188,5 @@ class PipelineRunner:
             "current_node": "",
             "error": None,
             "warnings": [],
+            "review_route": None,
         }

@@ -13,6 +13,7 @@ Scores content on 5 dimensions:
 5. Content depth (threshold: 0.7)
 """
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,8 @@ from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config, get_platform_specs
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "reviewer.md"
 
@@ -108,6 +111,7 @@ def reviewer_node(state: dict) -> dict:
         }
 
     except Exception as e:
+        logger.exception("Reviewer lỗi — nội dung sẽ bị đánh dấu CHƯA kiểm được")
         node_trace.error = f"Review failed: {str(e)}"
         node_trace.finished_at = datetime.now()
 
@@ -344,6 +348,7 @@ def _combine_results(
 
     critical_issues = list(llm_review.critical_issues) + [msg for _, msg in rule_issues]
     if unscored:
+        logger.warning("LLM không chấm các chiều: %s", ", ".join(unscored))
         critical_issues.append("Reviewer không chấm các chiều: " + ", ".join(unscored))
 
     # Hướng dẫn sửa: chiều trượt kèm đúng những vi phạm của chiều đó

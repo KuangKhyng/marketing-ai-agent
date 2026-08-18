@@ -8,6 +8,7 @@ Channel Renderer Node
 Renders native content per platform. Integrates voice profile + anti-AI patterns.
 """
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 MAX_PARALLEL_RENDERS = 3
 
@@ -194,7 +197,7 @@ def channel_renderer_node(state: dict) -> dict:
     stop=stop_after_attempt(3),
     reraise=True,
 )
-def _render_with_retry(llm, structured_llm, messages, handler):
+def _render_with_retry(structured_llm, messages, handler):
     """Call LLM with retry on rate limit errors."""
     return structured_llm.invoke(messages, config={"callbacks": [handler]})
 
@@ -243,7 +246,7 @@ def _render_single_piece(
         ]
 
         handler = TokenUsageHandler()
-        piece = _render_with_retry(llm, structured_llm, messages, handler)
+        piece = _render_with_retry(structured_llm, messages, handler)
 
         # Ensure channel and deliverable are set correctly
         piece.channel = channel
@@ -277,7 +280,9 @@ def _render_single_piece(
         return piece
 
     except Exception as e:
-        # Log error but don't fail entire pipeline for one piece
+        # Một piece lỗi không làm sập cả pipeline, nhưng phải log lại —
+        # trước đây lỗi chỉ nằm trong trace và không ai đọc.
+        logger.exception("Render thất bại %s/%s", channel.value, deliverable.value)
         node_trace.error = (node_trace.error or "") + f"\nFailed {channel.value}/{deliverable.value}: {str(e)}"
         return None
 

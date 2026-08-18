@@ -1,9 +1,25 @@
-fastapi>=0.110
-uvicorn>=0.27
-langgraph>=0.2
-langchain-anthropic>=0.3
-langchain-core>=0.3
-pydantic>=2.0
-pyyaml>=6.0
-rich>=13.0
-python-dotenv>=1.0
+# Dependency của backend, có chặn trên theo major.
+#
+# Vì sao có chặn trên: bản trước ghi `langgraph>=0.2` và không pin gì, nên
+# Railway build lúc nào là lấy bản mới nhất lúc đó — thực tế đã trôi từ 0.2 lên
+# 1.1 (LangChain 1.0 có breaking change). Chặn trên để một lần deploy không tự
+# nhảy major.
+#
+# Version trong comment là bản đã chạy thật khi cập nhật file này (2026-08).
+# Nâng major thì nâng có chủ đích, chạy pytest + smoke_real_api.py trước.
+
+fastapi>=0.110,<1              # 0.136.0
+uvicorn>=0.27,<1               # 0.44.0
+langgraph>=1.1,<2              # 1.1.8
+langchain-anthropic>=1.4,<2    # 1.4.1
+langchain-core>=1.3,<2         # 1.3.0
+pydantic>=2.0,<3               # 2.13.2
+pyyaml>=6.0,<7                 # 6.0.3
+rich>=13.0,<16                 # 15.0.0
+python-dotenv>=1.0,<2          # 1.2.2
+
+# Dùng TRỰC TIẾP trong code, phải tự khai báo — trước đây chỉ tồn tại nhờ là
+# transitive dependency của langchain, tức là có thể biến mất bất cứ lúc nào:
+#   src/nodes/channel_renderer.py: @retry(...) và anthropic.RateLimitError
+anthropic>=0.96,<1             # 0.96.0
+tenacity>=8.1,<10              # 9.1.4

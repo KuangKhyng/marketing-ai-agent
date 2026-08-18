@@ -28,6 +28,7 @@ from rich.markdown import Markdown as RichMarkdown
 
 from src.graph.workflow import build_workflow
 from src.models.trace import RunTrace
+from src.utils.logging_config import setup_logging
 from langgraph.types import Command
 
 
@@ -217,6 +218,7 @@ def _print_run_summary(workflow, config):
 
 
 def main():
+    setup_logging()
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Marketing Agent Workflow Engine",
