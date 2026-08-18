@@ -111,6 +111,48 @@ def test_moi_package_deu_co_chan_tren():
     assert not thieu_chan, f"Thiếu chặn trên: {thieu_chan}"
 
 
+def test_package_lock_co_binary_cho_linux():
+    """
+    package-lock.json phải chứa entry cài được cho linux/x64, nếu không CI và
+    Railway build sẽ vỡ dù máy dev vẫn chạy tốt.
+
+    Lỗi đã xảy ra: npm 10.1.0 trên Windows chỉ ghi entry của binary win32 vào
+    `packages`; tên linux chỉ nằm trong danh sách optionalDependencies của
+    rollup nên `npm ci` trên Linux không có gì để cài và báo lỗi rất khó hiểu
+    ("Cannot find module @rollup/rollup-linux-x64-gnu"). Sinh lại lock bằng
+    npm >= 11 thì đủ cả 25 platform.
+
+    Nếu test này đỏ: cd web && npx npm@11 install --package-lock-only --include=dev
+    """
+    import json
+
+    lock_path = PROJECT_ROOT / "web" / "package-lock.json"
+    if not lock_path.exists():
+        pytest.skip("chưa có web/package-lock.json")
+
+    packages = json.loads(lock_path.read_text(encoding="utf-8")).get("packages", {})
+
+    # Họ package nào có binary theo nền tảng thì phải có bản linux/x64
+    linux_x64 = {
+        key.split("node_modules/")[-1]
+        for key, entry in packages.items()
+        if "linux" in (entry.get("os") or []) and "x64" in (entry.get("cpu") or [])
+    }
+
+    can_co = {
+        "@rollup/rollup-linux-x64-gnu": "vite build",
+        "@esbuild/linux-x64": "vite dev/transform",
+        "@tailwindcss/oxide-linux-x64-gnu": "tailwind v4",
+        "lightningcss-linux-x64-gnu": "tailwind v4",
+    }
+
+    thieu = {name: ly_do for name, ly_do in can_co.items() if name not in linux_x64}
+    assert not thieu, (
+        "package-lock.json thiếu binary linux/x64 (npm ci trên CI/Railway sẽ vỡ): "
+        f"{thieu}. Sinh lại: cd web && npx npm@11 install --package-lock-only --include=dev"
+    )
+
+
 def test_dep_dung_truc_tiep_deu_duoc_khai_bao():
     """
     anthropic và tenacity được import TRỰC TIẾP trong channel_renderer nhưng
