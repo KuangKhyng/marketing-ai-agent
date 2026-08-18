@@ -8,6 +8,7 @@ Channel Renderer Node
 Renders native content per platform. Integrates voice profile + anti-AI patterns.
 """
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 MAX_PARALLEL_RENDERS = 3
 
@@ -132,16 +135,48 @@ def channel_renderer_node(state: dict) -> dict:
         if errors:
             node_trace.error = "\n".join(errors)
 
+        # Không piece nào render được => LỖI, không phải "content rỗng".
+        # Trước đây chỗ này trả về CampaignContent(pieces=[]) và UI hiện màn
+        # duyệt nội dung trống trơn mà không nói gì.
+        if render_tasks and not all_pieces:
+            node_trace.finished_at = datetime.now()
+            detail = "\n".join(errors) if errors else "Không rõ nguyên nhân."
+            return {
+                "error": f"Không tạo được nội dung cho kênh nào. {detail}",
+                "current_node": "channel_renderer",
+                "trace": update_trace(state, node_trace),
+            }
+
         campaign_content = CampaignContent(
             pieces=all_pieces,
             master_message_summary=master_message.core_promise,
         )
 
-        node_trace.output_summary = f"Generated {len(all_pieces)} content pieces"
+        # Render được một phần => vẫn đi tiếp, nhưng phải nói cho user biết
+        # thiếu gì, thay vì im lặng giao ít hơn số kênh đã chọn.
+        warnings = list(state.get("warnings") or [])
+        missing = len(render_tasks) - len(all_pieces)
+        if missing > 0:
+            rendered = {(p.channel.value, p.deliverable.value) for p in all_pieces}
+            failed = [
+                f"{ch.value}/{dl.value}"
+                for ch, dl in render_tasks
+                if (ch.value, dl.value) not in rendered
+            ]
+            warnings.append(
+                f"Không tạo được {missing}/{len(render_tasks)} nội dung: "
+                + ", ".join(failed)
+                + ". Có thể yêu cầu viết lại ở bước duyệt nội dung."
+            )
+
+        node_trace.output_summary = (
+            f"Generated {len(all_pieces)}/{len(render_tasks)} content pieces"
+        )
         node_trace.finished_at = datetime.now()
 
         return {
             "campaign_content": campaign_content,
+            "warnings": warnings,
             "current_node": "channel_renderer",
             "trace": update_trace(state, node_trace),
         }
@@ -162,7 +197,7 @@ def channel_renderer_node(state: dict) -> dict:
     stop=stop_after_attempt(3),
     reraise=True,
 )
-def _render_with_retry(llm, structured_llm, messages, handler):
+def _render_with_retry(structured_llm, messages, handler):
     """Call LLM with retry on rate limit errors."""
     return structured_llm.invoke(messages, config={"callbacks": [handler]})
 
@@ -211,7 +246,7 @@ def _render_single_piece(
         ]
 
         handler = TokenUsageHandler()
-        piece = _render_with_retry(llm, structured_llm, messages, handler)
+        piece = _render_with_retry(structured_llm, messages, handler)
 
         # Ensure channel and deliverable are set correctly
         piece.channel = channel
@@ -245,7 +280,9 @@ def _render_single_piece(
         return piece
 
     except Exception as e:
-        # Log error but don't fail entire pipeline for one piece
+        # Một piece lỗi không làm sập cả pipeline, nhưng phải log lại —
+        # trước đây lỗi chỉ nằm trong trace và không ai đọc.
+        logger.exception("Render thất bại %s/%s", channel.value, deliverable.value)
         node_trace.error = (node_trace.error or "") + f"\nFailed {channel.value}/{deliverable.value}: {str(e)}"
         return None
 

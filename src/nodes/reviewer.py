@@ -13,17 +13,25 @@ Scores content on 5 dimensions:
 5. Content depth (threshold: 0.7)
 """
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.models.review import ReviewResult, ReviewDimension, DimensionScore
+from src.models.review import (
+    DimensionScore,
+    LLMReviewOutput,
+    ReviewDimension,
+    ReviewResult,
+)
 from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config, get_platform_specs
 from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "reviewer.md"
 
@@ -43,9 +51,13 @@ def _load_prompt() -> str:
 
 def reviewer_node(state: dict) -> dict:
     """
-    Review campaign content across 4 dimensions.
+    Review campaign content across 5 dimensions.
 
-    Combines rule-based checks with LLM-based evaluation.
+    Kết hợp rule check (bằng code) với đánh giá của LLM. Chiều nào vi phạm
+    quy tắc cứng thì KHÔNG ĐẠT, bất kể LLM chấm bao nhiêu.
+
+    Reviewer lỗi => overall_passed=False + review_unavailable=True. Fail-closed:
+    "chưa kiểm được" không được phép hiện ra như "đã đạt".
 
     Args:
         state: CampaignState dict with 'campaign_content', 'brief',
@@ -99,70 +111,86 @@ def reviewer_node(state: dict) -> dict:
         }
 
     except Exception as e:
+        logger.exception("Reviewer lỗi — nội dung sẽ bị đánh dấu CHƯA kiểm được")
         node_trace.error = f"Review failed: {str(e)}"
         node_trace.finished_at = datetime.now()
 
-        # On error, pass content through with warnings
+        # Reviewer lỗi => KHÔNG kết luận là đạt. Cổng chất lượng fail-closed.
         fallback_review = ReviewResult(
-            overall_passed=True,
+            overall_passed=False,
+            review_unavailable=True,
             dimension_scores=[
                 DimensionScore(
                     dimension=dim,
-                    score=0.5,
-                    passed=True,
-                    feedback=f"Review error — passed by default: {str(e)}"
+                    score=0.0,
+                    passed=False,
+                    feedback="Chưa chấm được — reviewer gặp lỗi.",
                 )
                 for dim in ReviewDimension
             ],
-            suggestions=["Review failed — manual review recommended"],
+            critical_issues=[f"Reviewer lỗi, nội dung CHƯA được kiểm: {str(e)}"],
+            suggestions=["Cần người đọc lại toàn bộ nội dung trước khi dùng."],
+            revision_instructions=None,
         )
 
+        # Tăng revision_count kể cả khi lỗi: nhánh LangGraph dùng biến này để
+        # chặn vòng lặp. Không tăng thì reviewer lỗi liên tục sẽ retry vô hạn.
         return {
             "review_result": fallback_review,
+            "revision_count": state.get("revision_count", 0) + 1,
             "current_node": "reviewer",
             "trace": update_trace(state, node_trace),
         }
 
 
-def _run_rule_checks(content, brief, context_pack) -> list[str]:
+
+def _run_rule_checks(content, brief, context_pack) -> list[tuple[ReviewDimension, str]]:
     """
-    Rule-based checks (BEFORE LLM):
-    - Word count within constraints
-    - Required terms present
-    - Forbidden terms absent
-    - Hashtag format
-    - Content duplication
-    - Channel format specs
+    Rule check bằng code (chạy TRƯỚC LLM). Mỗi vi phạm được gắn vào một
+    dimension cụ thể để `_combine_results` biết chiều nào phải trượt.
+
+    Đây là dữ kiện kiểm được, không phải ý kiến — nên nó thắng điểm của LLM:
+      - dài/ngắn quá giới hạn                     -> channel_fit
+      - thiếu từ user yêu cầu (must_include)      -> business_fit
+      - chứa từ phải tránh / thiếu mandatory term -> brand_fit
+      - chứa forbidden claim của brand            -> factuality
+      - hashtag sai format, nội dung trùng lặp    -> channel_fit
     """
-    issues = []
+    issues: list[tuple[ReviewDimension, str]] = []
 
     for piece in content.pieces:
         piece_label = f"[{piece.channel.value}/{piece.deliverable.value}]"
 
+        def add(dimension: ReviewDimension, message: str) -> None:
+            issues.append((dimension, f"{piece_label} {message}"))
+
         # Word count check
         if brief.constraints.word_limit and piece.word_count > brief.constraints.word_limit:
-            issues.append(f"{piece_label} Word count {piece.word_count} exceeds limit {brief.constraints.word_limit}")
+            add(
+                ReviewDimension.CHANNEL_FIT,
+                f"Word count {piece.word_count} exceeds limit {brief.constraints.word_limit}",
+            )
 
         # Required terms check
         body_lower = piece.body.lower()
         for term in brief.constraints.must_include:
             if term.lower() not in body_lower:
-                issues.append(f"{piece_label} Missing required term: '{term}'")
+                add(ReviewDimension.BUSINESS_FIT, f"Missing required term: '{term}'")
 
         # Forbidden terms check
         for term in brief.constraints.must_avoid:
             if term.lower() in body_lower:
-                issues.append(f"{piece_label} Contains forbidden term: '{term}'")
+                add(ReviewDimension.BRAND_FIT, f"Contains forbidden term: '{term}'")
 
         # Brand forbidden claims check
         for claim in brief.brand.forbidden_claims:
             if claim.lower() in body_lower:
-                issues.append(f"{piece_label} Contains forbidden brand claim: '{claim}'")
+                add(ReviewDimension.FACTUALITY, f"Contains forbidden brand claim: '{claim}'")
 
         # Mandatory brand terms check
         for term in brief.brand.mandatory_terms:
             if term.lower() not in body_lower:
-                issues.append(f"{piece_label} Missing mandatory brand term: '{term}'")
+                add(ReviewDimension.BRAND_FIT, f"Missing mandatory brand term: '{term}'")
 
         # Platform-specific word count ranges
         specs = get_platform_specs(piece.channel.value, piece.deliverable.value)
@@ -170,31 +198,39 @@ def _run_rule_checks(content, brief, context_pack) -> list[str]:
             min_words = specs.get("min_words")
             max_words = specs.get("max_words")
             if min_words and piece.word_count < int(min_words):
-                issues.append(f"{piece_label} Too short: {piece.word_count} words (min: {min_words})")
+                add(
+                    ReviewDimension.CHANNEL_FIT,
+                    f"Too short: {piece.word_count} words (min: {min_words})",
+                )
             if max_words and piece.word_count > int(max_words):
-                issues.append(f"{piece_label} Too long: {piece.word_count} words (max: {max_words})")
+                add(
+                    ReviewDimension.CHANNEL_FIT,
+                    f"Too long: {piece.word_count} words (max: {max_words})",
+                )
 
         # Hashtag format check: all must be lowercase
         for hashtag in piece.hashtags:
             if hashtag != hashtag.lower():
-                issues.append(f"{piece_label} Hashtag not lowercase: '{hashtag}'")
+                add(ReviewDimension.CHANNEL_FIT, f"Hashtag not lowercase: '{hashtag}'")
 
         # Content duplication check: headline/hook/body first line
         body_first_line = piece.body.split("\n")[0].strip() if piece.body else ""
         if piece.headline and piece.hook:
             if piece.headline.strip().lower() == piece.hook.strip().lower():
-                issues.append(f"{piece_label} Duplicate: headline = hook (same text)")
+                add(ReviewDimension.CHANNEL_FIT, "Duplicate: headline = hook (same text)")
         if piece.headline and body_first_line:
             if piece.headline.strip().lower() == body_first_line.lower():
-                issues.append(f"{piece_label} Duplicate: headline = body first line")
+                add(ReviewDimension.CHANNEL_FIT, "Duplicate: headline = body first line")
         if piece.hook and body_first_line:
             if piece.hook.strip().lower() == body_first_line.lower():
-                issues.append(f"{piece_label} Duplicate: hook = body first line")
+                add(ReviewDimension.CHANNEL_FIT, "Duplicate: hook = body first line")
 
     return issues
 
 
-def _run_llm_review(content, brief, context_pack, master_message, config, node_trace) -> ReviewResult:
+def _run_llm_review(
+    content, brief, context_pack, master_message, config, node_trace
+) -> LLMReviewOutput:
     """LLM-based evaluation using Claude Haiku."""
     llm = ChatAnthropic(
         model=config["model"],
@@ -230,7 +266,7 @@ def _run_llm_review(content, brief, context_pack, master_message, config, node_t
 
     user_message = "\n\n---\n\n".join(user_parts)
 
-    structured_llm = llm.with_structured_output(ReviewResult)
+    structured_llm = llm.with_structured_output(LLMReviewOutput)
 
     messages = [
         SystemMessage(content=system_prompt),
@@ -252,65 +288,84 @@ def _run_llm_review(content, brief, context_pack, master_message, config, node_t
     return result
 
 
-def _combine_results(rule_issues: list[str], llm_review: ReviewResult) -> ReviewResult:
-    """Combine rule-based issues with LLM review results."""
-    # Add rule-based issues to critical issues
-    combined_issues = list(llm_review.critical_issues) + rule_issues
+def _combine_results(
+    rule_issues: list[tuple[ReviewDimension, str]],
+    llm_review: LLMReviewOutput,
+) -> ReviewResult:
+    """
+    Ghép rule check với điểm của LLM thành kết luận cuối.
 
-    # Re-check pass/fail with thresholds
-    dimension_scores = []
+    Ba quy tắc:
+      1. Luôn trả về đủ 5 dimension. Chiều nào LLM không chấm thì tính là
+         KHÔNG ĐẠT — thiếu đánh giá không được phép trôi thành "đạt".
+      2. LLM trả trùng một chiều thì giữ điểm thấp nhất.
+      3. Chiều nào có vi phạm quy tắc cứng thì trượt, bất kể điểm LLM.
+    """
+    # Điểm LLM theo chiều; trùng thì giữ điểm thấp nhất
+    by_dim: dict[ReviewDimension, object] = {}
     for score in llm_review.dimension_scores:
-        threshold = THRESHOLDS.get(score.dimension, 0.7)
-        passed = score.score >= threshold
-        dimension_scores.append(DimensionScore(
-            dimension=score.dimension,
-            score=score.score,
-            passed=passed,
-            feedback=score.feedback,
-        ))
+        current = by_dim.get(score.dimension)
+        if current is None or score.score < current.score:
+            by_dim[score.dimension] = score
 
-    # If there are rule-based issues, reduce relevant dimension scores
-    if rule_issues:
-        for i, ds in enumerate(dimension_scores):
-            # Forbidden claims/terms → factuality penalty
-            if ds.dimension == ReviewDimension.FACTUALITY and any("forbidden" in issue.lower() for issue in rule_issues):
-                dimension_scores[i] = DimensionScore(
-                    dimension=ds.dimension,
-                    score=min(ds.score, 0.5),
-                    passed=False,
-                    feedback=ds.feedback + " | Rule violations found.",
-                )
-            # Hashtag/duplication → channel_fit penalty
-            if ds.dimension == ReviewDimension.CHANNEL_FIT and any(
-                ("hashtag" in issue.lower() or "duplicate" in issue.lower()) for issue in rule_issues
-            ):
-                penalty = 0.1 * len([i for i in rule_issues if "hashtag" in i.lower() or "duplicate" in i.lower()])
-                new_score = max(ds.score - penalty, 0.0)
-                dimension_scores[i] = DimensionScore(
-                    dimension=ds.dimension,
-                    score=new_score,
-                    passed=new_score >= THRESHOLDS[ReviewDimension.CHANNEL_FIT],
-                    feedback=ds.feedback + f" | Rule penalty: -{penalty:.1f} for formatting issues.",
-                )
+    # Vi phạm quy tắc cứng, gom theo chiều
+    violations_by_dim: dict[ReviewDimension, list[str]] = {}
+    for dimension, message in rule_issues:
+        violations_by_dim.setdefault(dimension, []).append(message)
+
+    dimension_scores = []
+    unscored = []
+
+    for dimension in ReviewDimension:
+        violations = violations_by_dim.get(dimension, [])
+        llm_score = by_dim.get(dimension)
+
+        if llm_score is None:
+            unscored.append(dimension.value)
+            dimension_scores.append(DimensionScore(
+                dimension=dimension,
+                score=0.0,
+                passed=False,
+                feedback="Reviewer không trả về đánh giá cho chiều này — cần đọc lại bằng mắt.",
+                rule_violations=violations,
+            ))
+            continue
+
+        threshold = THRESHOLDS.get(dimension, 0.7)
+        feedback = llm_score.feedback
+        if violations:
+            feedback = f"Vi phạm {len(violations)} quy tắc cứng. {feedback}"
+
+        dimension_scores.append(DimensionScore(
+            dimension=dimension,
+            score=llm_score.score,
+            passed=llm_score.score >= threshold and not violations,
+            feedback=feedback,
+            rule_violations=violations,
+        ))
 
     overall_passed = all(ds.passed for ds in dimension_scores)
 
-    # Build revision instructions if failed
+    critical_issues = list(llm_review.critical_issues) + [msg for _, msg in rule_issues]
+    if unscored:
+        logger.warning("LLM không chấm các chiều: %s", ", ".join(unscored))
+        critical_issues.append("Reviewer không chấm các chiều: " + ", ".join(unscored))
+
+    # Hướng dẫn sửa: chiều trượt kèm đúng những vi phạm của chiều đó
     revision_instructions = None
     if not overall_passed:
-        failed_dims = [ds for ds in dimension_scores if not ds.passed]
-        revision_parts = [
-            f"- {ds.dimension.value} (score: {ds.score:.2f}): {ds.feedback}"
-            for ds in failed_dims
-        ]
-        if rule_issues:
-            revision_parts.extend([f"- Rule issue: {issue}" for issue in rule_issues])
-        revision_instructions = "Hãy sửa content theo các vấn đề sau:\n" + "\n".join(revision_parts)
+        parts = []
+        for ds in dimension_scores:
+            if ds.passed:
+                continue
+            parts.append(f"- {ds.dimension.value} (score: {ds.score:.2f}): {ds.feedback}")
+            parts.extend(f"    · {v}" for v in ds.rule_violations)
+        revision_instructions = "Hãy sửa content theo các vấn đề sau:\n" + "\n".join(parts)
 
     return ReviewResult(
         overall_passed=overall_passed,
         dimension_scores=dimension_scores,
-        critical_issues=combined_issues,
+        critical_issues=critical_issues,
         suggestions=llm_review.suggestions,
         revision_instructions=revision_instructions or llm_review.revision_instructions,
     )

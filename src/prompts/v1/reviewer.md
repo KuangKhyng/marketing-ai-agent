@@ -96,28 +96,28 @@ Khi Brand Context trống:
 - KHÔNG trừ điểm vì thiếu brand guidelines
 - Content Depth: áp dụng Y HỆT — generic mode KHÔNG có nghĩa là được viết nông
 
-## Output JSON — ReviewResult schema
+## Output JSON
+
+BẮT BUỘC trả về đủ CẢ 5 dimension: brand_fit, factuality, channel_fit,
+business_fit, content_depth. Thiếu dimension nào thì dimension đó bị tính là
+KHÔNG ĐẠT.
+
+KHÔNG trả về `overall_passed` và KHÔNG trả về `passed` cho từng dimension —
+ngưỡng đạt do code áp, không phải việc của bạn. Bạn chỉ chấm `score` và giải
+thích trong `feedback`.
 
 ```json
 {
-  "overall_passed": true/false,
   "dimension_scores": [
-    {
-      "dimension": "brand_fit",
-      "score": 0.8,
-      "passed": true,
-      "feedback": "Lý do cụ thể..."
-    },
-    {
-      "dimension": "content_depth",
-      "score": 0.65,
-      "passed": false,
-      "feedback": "Content thiếu specificity — chỉ có abstract statements, không có micro-story hay ví dụ cụ thể. Hook generic. Insight ở mức surface-level."
-    }
+    { "dimension": "brand_fit",     "score": 0.80, "feedback": "Lý do cụ thể..." },
+    { "dimension": "factuality",    "score": 0.95, "feedback": "..." },
+    { "dimension": "channel_fit",   "score": 0.70, "feedback": "..." },
+    { "dimension": "business_fit",  "score": 0.75, "feedback": "..." },
+    { "dimension": "content_depth", "score": 0.65, "feedback": "Content thiếu specificity — chỉ có abstract statements, không có micro-story hay ví dụ cụ thể. Hook generic. Insight ở mức surface-level." }
   ],
   "critical_issues": ["..."],
   "suggestions": ["..."],
-  "revision_instructions": "Nếu fail: chỉ rõ dimension nào, vì sao, sửa gì"
+  "revision_instructions": "Chỉ rõ dimension nào yếu, vì sao, sửa gì"
 }
 ```
 

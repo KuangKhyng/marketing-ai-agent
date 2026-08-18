@@ -4,8 +4,6 @@ CLI Interface — main entry point for the Marketing Agent Workflow Engine.
 Commands:
   python cli.py run "Tạo campaign cho dịch vụ tử vi online target Gen Z"
   python cli.py run --interactive
-  python cli.py eval
-  python cli.py analyze-voice
 """
 import sys
 import os
@@ -28,6 +26,7 @@ from rich.markdown import Markdown as RichMarkdown
 
 from src.graph.workflow import build_workflow
 from src.models.trace import RunTrace
+from src.utils.logging_config import setup_logging
 from langgraph.types import Command
 
 
@@ -217,6 +216,7 @@ def _print_run_summary(workflow, config):
 
 
 def main():
+    setup_logging()
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Marketing Agent Workflow Engine",
@@ -225,8 +225,6 @@ def main():
 Examples:
   python cli.py run "Tạo campaign cho dịch vụ tử vi online target Gen Z"
   python cli.py run --interactive
-  python cli.py eval
-  python cli.py analyze-voice
         """,
     )
 
@@ -237,20 +235,10 @@ Examples:
     run_parser.add_argument("input", nargs="?", help="Campaign request (natural language)")
     run_parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
 
-    # eval command (Phase 2)
-    eval_parser = subparsers.add_parser("eval", help="Run evaluation on golden dataset")
-
-    # analyze-voice command (Phase 2)
-    voice_parser = subparsers.add_parser("analyze-voice", help="Analyze sample posts to create voice profile")
-
     args = parser.parse_args()
 
     if args.command == "run":
         run_campaign(input_text=args.input, interactive=args.interactive)
-    elif args.command == "eval":
-        console.print("[yellow]Evaluation runner is a Phase 2 feature.[/yellow]")
-    elif args.command == "analyze-voice":
-        console.print("[yellow]Voice analyzer is a Phase 2 feature.[/yellow]")
     else:
         parser.print_help()
 

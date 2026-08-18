@@ -127,6 +127,18 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
         </div>
       </header>
 
+      {/* Kênh render thất bại — trước đây bị nuốt, user chỉ thấy thiếu bài */}
+      {campaignData?.warnings?.length > 0 && (
+        <div className="sheet px-5 py-4 mb-7" style={{ borderLeft: '2px solid var(--warn)' }}>
+          <p className="t-label mb-2">Chưa tạo đủ nội dung</p>
+          <ul className="space-y-1">
+            {campaignData.warnings.map((w, i) => (
+              <li key={i} className="text-[0.875rem] text-ink-2 leading-relaxed">{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Chọn bài — gạch chân trượt giữa các tab bằng shared layout */}
       <div className="scroll-x border-b border-rule mb-7">
         <div className="flex gap-6 min-w-max">

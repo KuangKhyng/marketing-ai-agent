@@ -76,6 +76,25 @@ class ContentFeedback(BaseModel):
     piece_feedbacks: list[ContentPieceFeedback] = Field(default_factory=list)
 
 
+class QuickActionType(str, Enum):
+    REWRITE = "rewrite"
+    CHANGE_HOOK = "change_hook"
+    CHANGE_TONE = "change_tone"
+    SHORTER = "shorter"
+    LONGER = "longer"
+
+
+class QuickActionRequest(BaseModel):
+    """
+    Sửa nhanh một piece.
+
+    piece_index có ge=0: Python cho phép pieces[-1] nên index âm sẽ sửa âm thầm
+    vào piece khác. Trước đây endpoint này nhận `dict` thô, không validate gì.
+    """
+    piece_index: int = Field(ge=0)
+    action: QuickActionType = QuickActionType.REWRITE
+
+
 # === RESPONSE SCHEMAS ===
 
 class ContextInfo(BaseModel):
@@ -93,6 +112,10 @@ class PipelineStatus(BaseModel):
     content: Optional[dict] = None
     review_result: Optional[dict] = None
     error: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
+    # Kết quả src/graph/edges.route_after_review: "passed" | "retry" |
+    # "max_retries". Graph tự đi theo; web hiện ra cho user quyết.
+    review_route: Optional[str] = None
     revision_count: int = 0
     cost_estimate: float = 0.0
     context_info: Optional[ContextInfo] = None

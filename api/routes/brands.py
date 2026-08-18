@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from src.knowledge.brand_manager import BrandManager
+from src.knowledge.brand_manager import BrandExistsError, BrandManager
 
 router = APIRouter()
 manager = BrandManager()
@@ -64,7 +64,11 @@ def create_brand(req: CreateBrandRequest):
     """Create a new brand with default template files."""
     if manager.get_brand(req.id):
         raise HTTPException(status_code=409, detail="Brand already exists")
-    return manager.create_brand(req.id, req.name, req.description, req.color, req.icon)
+    try:
+        return manager.create_brand(req.id, req.name, req.description, req.color, req.icon)
+    except BrandExistsError as e:
+        # Thư mục đã có dữ liệu nhưng thiếu brand.json — không ghi đè
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.put("/{brand_id}")

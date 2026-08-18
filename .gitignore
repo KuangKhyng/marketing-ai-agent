@@ -12,11 +12,13 @@ build/
 
 # Project outputs
 outputs/
-vector_store/
+# Ban copy cua knowledge_base do nixpacks tao luc build (xem src/knowledge/seed.py)
+seed_knowledge/
 
 # Node
 node_modules/
-web/package-lock.json
+# package-lock.json KHONG bi ignore: nixpacks chay npm ci nen lock file la thu
+# duy nhat lam frontend build reproducible.
 
 # IDE
 .vscode/

@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -7,7 +8,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.security import auth_enabled, is_dev, require_api_key
+from src.knowledge.seed import seed_knowledge_base, warn_if_empty
+from src.utils.logging_config import setup_logging
 from src.utils.paths import InvalidPathError
+
+setup_logging()
+
+# Volume Railway mount vao /app/knowledge_base va che noi dung trong image.
+# Nap seed vao volume trong lan chay dau, chi cho file con thieu.
+seed_knowledge_base()
+warn_if_empty()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Marketing Agent API",
@@ -102,5 +113,5 @@ if DIST_DIR.exists():
             if DIST_DIR.resolve() in file_path.parents and file_path.is_file():
                 return FileResponse(file_path)
         except (OSError, ValueError):
-            pass
+            logger.debug("Path SPA không hợp lệ, trả index.html: %r", path)
         return FileResponse(DIST_DIR / "index.html")

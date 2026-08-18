@@ -29,6 +29,10 @@ export default [
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
+      // Project không dùng PropTypes ở đâu cả (JS thuần, không TypeScript).
+      // Để rule này bật thì lint đỏ 110 lỗi ở mọi component và không ai đọc
+      // output nữa — tắt nó thì lint mới dùng được làm cổng CI.
+      'react/prop-types': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

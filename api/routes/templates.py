@@ -3,18 +3,20 @@ Template Library — Save/load campaign brief templates.
 Templates are stored as JSON files in knowledge_base/_templates/
 """
 import json
+import logging
 import uuid
 from pathlib import Path
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 from src.config.settings import PROJECT_ROOT
 from src.utils.paths import safe_join, validate_id
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = PROJECT_ROOT / "knowledge_base" / "_templates"
 
@@ -29,11 +31,6 @@ class TemplateCreate(BaseModel):
     name: str
     description: str = ""
     brief: dict  # The campaign brief to save as template
-
-
-class TemplateUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
 
 
 @router.get("/")
@@ -51,7 +48,8 @@ def list_templates():
                 "created_at": data.get("created_at", ""),
                 "brief_summary": _summarize_brief(data.get("brief", {})),
             })
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.warning("Bỏ qua template hỏng %s: %s", f.name, e)
             continue
     return templates
 
