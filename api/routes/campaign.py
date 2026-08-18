@@ -13,7 +13,7 @@ from api.schemas import (
 )
 from api.pipeline_runner import PipelineRunner
 from api.events import progress_bus
-from api.cache import campaign_cache
+from api.cache import campaign_cache, is_cacheable
 
 router = APIRouter()
 
@@ -24,6 +24,13 @@ from src.config.settings import PROJECT_ROOT
 from src.utils.paths import safe_join, validate_id
 
 _SESSIONS_DIR = PROJECT_ROOT / "outputs"
+
+
+# Đóng vào mỗi file state.pkl. Tăng khi schema của object trong state đổi
+# (CampaignBrief, ReviewResult, CampaignContent...). File version khác bị coi
+# như hết hạn — thà bắt user chạy lại còn hơn khôi phục ra object thiếu field
+# rồi vỡ ở chỗ khác.
+_STATE_VERSION = 2
 
 
 class SessionStore:
@@ -71,7 +78,7 @@ class SessionStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with open(path, "wb") as f:
-                pickle.dump(runner.state, f)
+                pickle.dump({"version": _STATE_VERSION, "state": runner.state}, f)
         except Exception:
             pass  # Persist failure không được làm crash request
 
@@ -85,9 +92,13 @@ class SessionStore:
             return None
         try:
             with open(path, "rb") as f:
-                state = pickle.load(f)
+                payload = pickle.load(f)
+            # File của phiên bản schema khác (hoặc format cũ, chưa có version)
+            if not isinstance(payload, dict) or payload.get("version") != _STATE_VERSION:
+                path.unlink(missing_ok=True)
+                return None
             runner = PipelineRunner()
-            runner.state = state
+            runner.state = payload["state"]
             self._cache[run_id] = runner
             return runner
         except Exception:
@@ -224,16 +235,23 @@ def approve_brief(run_id: str, edit: BriefEdit = None):
     def push(event):
         progress_bus.push(run_id, event)
 
-    # Check strategy cache (only when no edit — edits change the brief)
-    cached_strategy = campaign_cache.get_strategy(raw_input, brand_id) if not edit else None
+    # Cache key gồm cả brief (đã tính edit ở trên), nên brief khác nhau là key
+    # khác nhau — không cần loại trừ trường hợp có edit nữa.
+    cached_strategy = (
+        campaign_cache.get_strategy(raw_input, brand_id, runner.state.get("brief"))
+        if is_cacheable(runner.state)
+        else None
+    )
     if cached_strategy:
         runner.state["strategy"] = cached_strategy
         progress_bus.push(run_id, {"type": "cache_hit", "node": "strategist", "message": "Chiến lược được tải từ cache."})
         state = runner.state
     else:
         state = runner.phase_2_strategy(on_progress=push)
-        if not state.get("error") and state.get("strategy"):
-            campaign_cache.set_strategy(raw_input, brand_id, state["strategy"])
+        if not state.get("error") and state.get("strategy") and is_cacheable(state):
+            campaign_cache.set_strategy(
+                raw_input, brand_id, state.get("brief"), state["strategy"]
+            )
 
     progress_bus.close(run_id)
 
@@ -281,8 +299,16 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
             cost_estimate=state["trace"].total_cost_estimate,
         )
 
-    # Approved — check content cache first (only when no revision loop)
-    cached = campaign_cache.get_content(raw_input, brand_id) if runner.state.get("revision_count", 0) == 0 else None
+    # Approved — check content cache. Key gồm cả strategy hiện tại, nên chiến
+    # lược vừa sửa sẽ miss cache và content được sinh lại (trước đây key chỉ có
+    # raw_input nên bản sửa bị bỏ qua âm thầm).
+    cached = (
+        campaign_cache.get_content(
+            raw_input, brand_id, runner.state.get("brief"), runner.state.get("strategy")
+        )
+        if is_cacheable(runner.state)
+        else None
+    )
     if cached:
         runner.state["master_message"] = cached["master_message"]
         runner.state["campaign_content"] = cached["campaign_content"]
@@ -291,8 +317,15 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
         state = runner.state
     else:
         state = runner.phase_3_content(on_progress=push)
-        if not state.get("error") and state.get("campaign_content"):
-            campaign_cache.set_content(raw_input, brand_id, state.get("master_message"), state["campaign_content"])
+        if not state.get("error") and state.get("campaign_content") and is_cacheable(state):
+            campaign_cache.set_content(
+                raw_input,
+                brand_id,
+                state.get("brief"),
+                state.get("strategy"),
+                state.get("master_message"),
+                state["campaign_content"],
+            )
 
     progress_bus.close(run_id)
 
@@ -306,6 +339,7 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
         phase="content_review",
         master_message=state["master_message"].model_dump() if state.get("master_message") else None,
         content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        warnings=state.get("warnings") or [],
         cost_estimate=state["trace"].total_cost_estimate,
     )
 
@@ -339,6 +373,7 @@ def review_content(run_id: str, feedback: ContentFeedback):
             run_id=run_id,
             phase="content_review",
             content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            warnings=state.get("warnings") or [],
             revision_count=state.get("revision_count", 0),
             cost_estimate=state["trace"].total_cost_estimate,
         )
@@ -353,6 +388,7 @@ def review_content(run_id: str, feedback: ContentFeedback):
         phase="final_review",
         content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
         review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+        warnings=state.get("warnings") or [],
         cost_estimate=state["trace"].total_cost_estimate,
     )
 
@@ -374,7 +410,9 @@ def quick_action(run_id: str, action: dict):
     action_type = action.get("action", "rewrite")
     pieces = runner.state["campaign_content"].pieces
 
-    if piece_index >= len(pieces):
+    # Chặn cả index âm: pieces[-1] là hợp lệ trong Python nên index âm sẽ sửa
+    # âm thầm vào piece khác.
+    if not isinstance(piece_index, int) or not 0 <= piece_index < len(pieces):
         raise HTTPException(status_code=400, detail="Invalid piece index")
 
     piece = pieces[piece_index]
@@ -407,6 +445,7 @@ def quick_action(run_id: str, action: dict):
     new_body = result.content.strip()
     piece.body = new_body
     piece.word_count = len(new_body.split())
+    _save_session(run_id, runner)
 
     return {
         "piece_index": piece_index,
@@ -477,6 +516,58 @@ def list_campaigns():
                         "timestamp": trace.get("started_at", ""),
                     })
     return runs
+
+
+def _infer_phase(state: dict) -> str:
+    """Suy ra user đang ở bước nào từ những gì state đã có."""
+    if state.get("review_result") is not None:
+        trace = state.get("trace")
+        if trace is not None and getattr(trace, "final_status", "") == "completed":
+            return "completed"
+        return "final_review"
+    if state.get("campaign_content") is not None:
+        return "content_review"
+    if state.get("strategy"):
+        return "strategy_review"
+    if state.get("brief") is not None:
+        return "brief_review"
+    return "input"
+
+
+@router.get("/{run_id}", response_model=PipelineStatus)
+def get_run(run_id: str):
+    """
+    Đọc lại trạng thái hiện tại của một run.
+
+    Dùng khi user F5 hoặc mở lại link có ?run=<id>: frontend gọi endpoint này
+    để dựng lại đúng bước đang dở, thay vì mất sạch dù server vẫn còn state.
+
+    LƯU Ý: route này phải khai báo SAU /history, nếu không "history" sẽ khớp
+    vào {run_id} và endpoint kia thành 404.
+    """
+    validate_id(run_id, "run_id")
+    runner = sessions.get(run_id)
+    if not runner or not runner.state:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Phiên làm việc đã hết hạn hoặc không tồn tại."},
+        )
+
+    state = runner.state
+    trace = state.get("trace")
+
+    return PipelineStatus(
+        run_id=run_id,
+        phase=_infer_phase(state),
+        brief=state["brief"].model_dump() if state.get("brief") else None,
+        strategy=state.get("strategy"),
+        master_message=state["master_message"].model_dump() if state.get("master_message") else None,
+        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+        warnings=state.get("warnings") or [],
+        revision_count=state.get("revision_count", 0),
+        cost_estimate=trace.total_cost_estimate if trace else 0.0,
+    )
 
 
 def _compile_strategy_feedback(feedback: StrategyFeedback) -> str:

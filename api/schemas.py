@@ -93,6 +93,7 @@ class PipelineStatus(BaseModel):
     content: Optional[dict] = None
     review_result: Optional[dict] = None
     error: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
     revision_count: int = 0
     cost_estimate: float = 0.0
     context_info: Optional[ContextInfo] = None

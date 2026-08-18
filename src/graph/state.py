@@ -45,3 +45,5 @@ class CampaignState(TypedDict):
     # Control
     current_node: str                           # which node is currently active
     error: Optional[str]                        # error message if any
+    warnings: list[str]                         # sự cố không chặn pipeline nhưng user cần biết
+                                                # (vd: 1 trong 3 kênh render thất bại)

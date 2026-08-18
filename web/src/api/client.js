@@ -92,6 +92,8 @@ export const authAPI = {
 
 export const campaignAPI = {
   start: (input) => api.post('/campaigns/start', input),
+  // Đọc lại một run đang dở — dùng khi mở link có ?run=<id> hoặc sau khi F5
+  get: (runId) => api.get(`/campaigns/${runId}`),
   approveBrief: (runId, edit) => api.post(`/campaigns/${runId}/approve-brief`, edit),
   reviewStrategy: (runId, feedback) => api.post(`/campaigns/${runId}/review-strategy`, feedback),
   reviewContent: (runId, feedback) => api.post(`/campaigns/${runId}/review-content`, feedback),

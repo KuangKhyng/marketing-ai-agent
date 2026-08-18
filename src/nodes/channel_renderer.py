@@ -132,16 +132,48 @@ def channel_renderer_node(state: dict) -> dict:
         if errors:
             node_trace.error = "\n".join(errors)
 
+        # Không piece nào render được => LỖI, không phải "content rỗng".
+        # Trước đây chỗ này trả về CampaignContent(pieces=[]) và UI hiện màn
+        # duyệt nội dung trống trơn mà không nói gì.
+        if render_tasks and not all_pieces:
+            node_trace.finished_at = datetime.now()
+            detail = "\n".join(errors) if errors else "Không rõ nguyên nhân."
+            return {
+                "error": f"Không tạo được nội dung cho kênh nào. {detail}",
+                "current_node": "channel_renderer",
+                "trace": update_trace(state, node_trace),
+            }
+
         campaign_content = CampaignContent(
             pieces=all_pieces,
             master_message_summary=master_message.core_promise,
         )
 
-        node_trace.output_summary = f"Generated {len(all_pieces)} content pieces"
+        # Render được một phần => vẫn đi tiếp, nhưng phải nói cho user biết
+        # thiếu gì, thay vì im lặng giao ít hơn số kênh đã chọn.
+        warnings = list(state.get("warnings") or [])
+        missing = len(render_tasks) - len(all_pieces)
+        if missing > 0:
+            rendered = {(p.channel.value, p.deliverable.value) for p in all_pieces}
+            failed = [
+                f"{ch.value}/{dl.value}"
+                for ch, dl in render_tasks
+                if (ch.value, dl.value) not in rendered
+            ]
+            warnings.append(
+                f"Không tạo được {missing}/{len(render_tasks)} nội dung: "
+                + ", ".join(failed)
+                + ". Có thể yêu cầu viết lại ở bước duyệt nội dung."
+            )
+
+        node_trace.output_summary = (
+            f"Generated {len(all_pieces)}/{len(render_tasks)} content pieces"
+        )
         node_trace.finished_at = datetime.now()
 
         return {
             "campaign_content": campaign_content,
+            "warnings": warnings,
             "current_node": "channel_renderer",
             "trace": update_trace(state, node_trace),
         }

@@ -142,4 +142,5 @@ class PipelineRunner:
             "trace": RunTrace(),
             "current_node": "",
             "error": None,
+            "warnings": [],
         }
