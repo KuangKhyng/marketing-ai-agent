@@ -25,6 +25,9 @@ Hai entrypoint: web app (FastAPI + React) và CLI. Cùng một chuỗi node, hai
   (server giữ state 120 phút)
 
 ### Multi-Brand Knowledge System
+- **Nạp liệu 2 chặng**: dán bài đã đăng → rút giọng văn + khung bài; dán tài
+  liệu brand → rút identity, sản phẩm, chân dung khách, ràng buộc nội dung.
+  Cả hai chặng chỉ **đề xuất**, người dùng đối chiếu rồi mới lưu.
 - **Brand Management**: CRUD brands with completeness scoring
 - **Knowledge Base UI**: Markdown editor with live preview
 - **Brand-aware Pipeline**: Context automatically loaded based on selected brand
@@ -121,6 +124,29 @@ pytest                              # không gọi Anthropic API, chạy offline
 python scripts/smoke_real_api.py all   # gọi API THẬT, có tốn tiền
 ```
 
+## 🧱 Nạp liệu cho brand mới
+
+Brand mới tạo xong chỉ có file markdown rỗng kèm placeholder. Thay vì bắt người
+dùng nhìn màn hình trắng và đoán phải viết gì, tab **Nạp liệu** đọc tài liệu họ
+đã có sẵn:
+
+| Chặng | Đưa vào | Rút ra |
+|-------|---------|--------|
+| 1 | Vài bài brand đã đăng | `voice_profile.json`, `tone_of_voice.md`, `content_framework.md` |
+| 2 | Hồ sơ công ty, mô tả sản phẩm, ghi chú khách hàng | `identity.md`, `products/`, `audience/`, gợi ý `forbidden_claims` / `mandatory_terms` |
+
+Chạy lại chặng nào cũng được, nạp thêm tài liệu bất cứ lúc nào.
+
+**Vì sao luôn phải có bước người duyệt.** `knowledge_base/` là nguồn sự thật của
+pipeline — reviewer chấm `factuality` dựa vào nó, và `brief_parser` cố tình ghi
+đè thông tin brand từ UI để LLM không tự bịa. Nếu để bước nạp liệu ghi thẳng
+những gì LLM suy ra, một câu bịa hôm nay sẽ thành "sự thật" mà hệ thống bảo vệ
+mãi về sau. Nên `POST .../bootstrap/voice|brand` chỉ **trả về draft**, và
+`POST .../bootstrap/apply` chỉ ghi đúng phần người dùng tick chọn.
+
+Prompt cũng được viết theo hướng đó: chỗ nào tài liệu không nói thì để trống và
+liệt kê vào `uncertain` để người dùng tự điền, thay vì lấp bằng chữ nghĩa hay ho.
+
 ## 📊 Pipeline Flow
 
 Cùng một chuỗi node, hai đường thực thi:
@@ -194,6 +220,7 @@ brief qua cả hai đường rồi so thứ tự node để phát hiện lệch.
 │           ├── brand.json          # meta + forbidden_claims, mandatory_terms
 │           ├── identity.md
 │           ├── tone_of_voice.md
+│           ├── content_framework.md # khung bài, sinh từ nạp liệu
 │           ├── visual_guidelines.md
 │           ├── voice_profile.json
 │           ├── products/

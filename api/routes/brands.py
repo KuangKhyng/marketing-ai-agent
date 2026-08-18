@@ -4,9 +4,10 @@ Brand Management API routes.
 CRUD operations for brands, documents, and voice profiles.
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
+from src.knowledge import brand_bootstrap
 from src.knowledge.brand_manager import BrandExistsError, BrandManager
 
 router = APIRouter()
@@ -40,6 +41,26 @@ class SaveDocumentRequest(BaseModel):
 
 class UpdateVoiceProfileRequest(BaseModel):
     profile: dict
+
+
+class BootstrapVoiceRequest(BaseModel):
+    """Chặng 1 — những bài brand đã từng đăng."""
+    samples: list[str] = Field(min_length=1)
+
+
+class BootstrapBrandRequest(BaseModel):
+    """Chặng 2 — tài liệu về brand và khách hàng."""
+    documents: list[str] = Field(min_length=1)
+
+
+class ApplyDraftRequest(BaseModel):
+    """
+    Chỉ những gì người dùng đã duyệt. UI bỏ chọn file nào thì file đó không có
+    trong danh sách này — server không tự suy diễn thêm.
+    """
+    files: list[brand_bootstrap.FileDraft] = Field(default_factory=list)
+    voice_profile: Optional[dict] = None
+    brand_meta: Optional[dict] = None
 
 
 # === Brand CRUD ===
@@ -141,3 +162,67 @@ def get_knowledge_preview(brand_id: str):
     if not preview:
         raise HTTPException(status_code=404, detail="Brand not found")
     return preview
+
+
+# === Bootstrap knowledge base ===
+#
+# Hai chặng nạp liệu, tích luỹ dần. Cả hai chỉ TRẢ VỀ DRAFT — người dùng đối
+# chiếu với nội dung đang có rồi mới bấm apply. Xem src/knowledge/brand_bootstrap.py
+# để biết vì sao bước duyệt là bắt buộc chứ không phải cho đẹp.
+
+
+def _require_brand(brand_id: str) -> dict:
+    brand = manager.get_brand(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    return brand
+
+
+def _guard_size(chunks: list[str]) -> None:
+    try:
+        brand_bootstrap.check_input_size(chunks)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail={"message": str(e)}) from e
+
+
+@router.post("/{brand_id}/bootstrap/voice", response_model=brand_bootstrap.BootstrapDraft)
+def bootstrap_voice(brand_id: str, req: BootstrapVoiceRequest):
+    """Chặng 1: đọc bài đã đăng, rút giọng văn và khung bài."""
+    brand = _require_brand(brand_id)
+    _guard_size(req.samples)
+
+    voice = brand_bootstrap.extract_voice(req.samples)
+    return brand_bootstrap.build_voice_draft(
+        manager, brand_id, brand.get("name", brand_id), voice
+    )
+
+
+@router.post("/{brand_id}/bootstrap/brand", response_model=brand_bootstrap.BootstrapDraft)
+def bootstrap_brand(brand_id: str, req: BootstrapBrandRequest):
+    """Chặng 2: đọc tài liệu về brand và khách hàng, rút bộ khung brand."""
+    brand = _require_brand(brand_id)
+    _guard_size(req.documents)
+
+    extracted = brand_bootstrap.extract_brand(req.documents)
+    return brand_bootstrap.build_brand_draft(
+        manager, brand_id, brand.get("name", brand_id), extracted
+    )
+
+
+@router.post("/{brand_id}/bootstrap/apply")
+def bootstrap_apply(brand_id: str, req: ApplyDraftRequest):
+    """Ghi phần người dùng đã duyệt. Không duyệt thì không ghi."""
+    _require_brand(brand_id)
+
+    if not req.files and not req.voice_profile and not req.brand_meta:
+        raise HTTPException(
+            status_code=400, detail={"message": "Chưa chọn gì để lưu."}
+        )
+
+    return brand_bootstrap.apply_draft(
+        manager,
+        brand_id,
+        req.files,
+        voice_profile=req.voice_profile,
+        brand_meta=req.brand_meta,
+    )

@@ -108,7 +108,12 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
 
         # Brand identity + tone + visual
         brand_parts = []
-        for filename in ["identity.md", "tone_of_voice.md", "visual_guidelines.md"]:
+        for filename in [
+            "identity.md",
+            "tone_of_voice.md",
+            "content_framework.md",   # khung bài, sinh từ bootstrap
+            "visual_guidelines.md",
+        ]:
             filepath = brand_dir / filename
             if filepath.exists():
                 brand_parts.append(_read_file(filepath))

@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
 import { ArrowLeft, Plus, Trash2, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useToast } from '../components/Toast';
+import BrandBootstrap from '../components/BrandBootstrap';
 
 const TABS = [
-  { id: 'docs',     label: 'Tài liệu' },
-  { id: 'voice',    label: 'Giọng điệu' },
-  { id: 'settings', label: 'Thiết lập' },
-  { id: 'preview',  label: 'AI thấy gì' },
+  { id: 'docs',      label: 'Tài liệu' },
+  { id: 'bootstrap', label: 'Nạp liệu' },
+  { id: 'voice',     label: 'Giọng điệu' },
+  { id: 'settings',  label: 'Thiết lập' },
+  { id: 'preview',   label: 'AI thấy gì' },
 ];
 
 const DOC_CATEGORIES = {
@@ -31,10 +33,20 @@ const DOC_TYPE_OPTIONS = [
 export default function BrandDetailPage() {
   const { brandId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast, Toast } = useToast();
 
   const [brand, setBrand] = useState(null);
-  const [tab, setTab] = useState('docs');
+  // Tab nằm trên URL để gửi link được và để BrandsPage đưa thẳng vào 'bootstrap'
+  const urlTab = searchParams.get('tab');
+  const [tab, setTab] = useState(
+    TABS.some(t => t.id === urlTab) ? urlTab : 'docs'
+  );
+
+  const changeTab = (id) => {
+    setTab(id);
+    setSearchParams(id === 'docs' ? {} : { tab: id }, { replace: true });
+  };
   const [loading, setLoading] = useState(true);
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDoc, setNewDoc] = useState({ type: 'products', name: '' });
@@ -132,7 +144,7 @@ export default function BrandDetailPage() {
           {TABS.map(t => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => changeTab(t.id)}
               aria-current={tab === t.id ? 'true' : undefined}
               className={`pb-3 -mb-px border-b-2 text-[0.875rem] transition-colors ${
                 tab === t.id ? 'border-cham font-semibold text-ink' : 'border-transparent text-ink-2 hover:border-rule-strong'
@@ -214,6 +226,11 @@ export default function BrandDetailPage() {
             );
           })}
         </div>
+      )}
+
+      {/* ---------------- Nạp liệu ---------------- */}
+      {tab === 'bootstrap' && (
+        <BrandBootstrap brandId={brandId} onApplied={loadBrand} showToast={showToast} />
       )}
 
       {/* ---------------- Giọng điệu ---------------- */}

@@ -123,6 +123,15 @@ export const brandsAPI = {
 
   // Preview
   preview: (brandId) => api.get(`/brands/${brandId}/preview`),
+
+  // Nạp liệu — hai chặng chỉ trả về đề xuất, apply mới ghi.
+  // Extract chạy LLM nên chậm hơn timeout mặc định của trang khác.
+  bootstrapVoice: (brandId, samples) =>
+    api.post(`/brands/${brandId}/bootstrap/voice`, { samples }),
+  bootstrapBrand: (brandId, documents) =>
+    api.post(`/brands/${brandId}/bootstrap/brand`, { documents }),
+  bootstrapApply: (brandId, payload) =>
+    api.post(`/brands/${brandId}/bootstrap/apply`, payload),
 };
 
 export const templatesAPI = {
