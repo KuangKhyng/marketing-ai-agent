@@ -64,6 +64,20 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000` to access the web UI.
 
+### Dependency
+
+Ba nơi khai báo, mỗi nơi một mục đích:
+
+| File | Dùng để |
+|------|---------|
+| `requirements.txt` | nixpacks **cài thật** trên Railway. Có chặn trên theo major. |
+| `pyproject.toml` | metadata package + extra `dev` |
+| `uv.lock` | pin chính xác cho môi trường dev local (`uv sync`) |
+
+`tests/test_dependency_consistency.py` canh cho ba file không nói ngược nhau —
+trước đây requirements ghi `langgraph>=0.2` trong khi lock là 1.1.8, tức là đã
+trôi qua một major mà không ai biết.
+
 ### Tests
 
 ```bash

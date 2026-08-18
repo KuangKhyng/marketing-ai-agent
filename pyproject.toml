@@ -28,7 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "httpx>=0.27",      # fastapi.testclient cần
+    "httpx>=0.27",       # fastapi.testclient cần
+    "packaging>=23.2",   # tests/test_dependency_consistency.py so version
 ]
 
 [project.scripts]

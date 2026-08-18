@@ -25,7 +25,7 @@ jobs:
       - name: Install deps
         run: |
           pip install -r requirements.txt
-          pip install pytest httpx
+          pip install pytest httpx packaging
 
       - name: Run tests
         # Không có ANTHROPIC_API_KEY ở đây và đó là chủ ý: test nào gọi API
