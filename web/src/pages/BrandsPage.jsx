@@ -60,8 +60,11 @@ export default function BrandsPage() {
     try {
       await brandsAPI.create(newBrand);
       setShowCreate(false);
+      const id = newBrand.id;
       setNewBrand({ id: '', name: '', description: '', icon: '📦', color: '#2f3e86' });
-      loadBrands();
+      // Brand mới chỉ có file rỗng kèm placeholder. Bỏ người dùng lại ở danh
+      // sách là bắt họ tự mò ra phải viết gì — đưa thẳng vào bước nạp liệu.
+      navigate(`/knowledge/${id}?tab=bootstrap`);
     } catch (err) {
       showToast(err.response?.data?.detail?.message || err.response?.data?.detail || err.message);
     }

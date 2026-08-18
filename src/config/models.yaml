@@ -26,3 +26,12 @@ nodes:
     model: "claude-haiku-4-5-20251001"
     temperature: 0.1           # strict — evaluation
     max_tokens: 2000
+
+  # Bootstrap knowledge base brand từ tài liệu người dùng đưa vào.
+  # Sonnet vì đây là việc cần phán đoán (rút USP, suy forbidden_claims theo
+  # ngành), không phải parse thuần. Temperature thấp: extract phải trung thành
+  # với tài liệu, không được sáng tác.
+  brand_bootstrap:
+    model: "claude-sonnet-4-6"
+    temperature: 0.2
+    max_tokens: 4000

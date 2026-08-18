@@ -351,13 +351,41 @@ class BrandManager:
             return "brand_core"
         return "general"
 
+    @staticmethod
+    def _real_content_length(path: Path) -> int:
+        """
+        Độ dài phần nội dung THẬT của một file markdown.
+
+        create_brand() sinh file mẫu đầy placeholder kiểu "(Thêm brand identity
+        tại đây)" — riêng phần khung đó đã dài hơn 50 ký tự, nên phép đo cũ
+        (len(file) > 50) chấm brand rỗng hoàn toàn là đã hoàn thành 50%.
+        Điểm hoàn thiện mà nói dối thì tệ hơn là không có.
+
+        Nên bỏ tiêu đề, dòng placeholder trong ngoặc đơn, và ghi chú nghiêng.
+        """
+        if not path.exists():
+            return 0
+
+        real = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            body = line.lstrip("-*").strip()
+            # "(Sứ mệnh)", "- (Giá trị 1)", "_(chưa có trong tài liệu)_"
+            if body.startswith("(") and body.endswith(")"):
+                continue
+            if body.startswith("_(") and body.endswith(")_"):
+                continue
+            real.append(body)
+
+        return len(" ".join(real))
+
     def _calc_completeness(self, brand_dir: Path) -> dict:
         """Calculate knowledge completeness (4 dimensions × 25%)."""
         checks = {
-            "identity": (brand_dir / "identity.md").exists()
-                and len((brand_dir / "identity.md").read_text(encoding="utf-8").strip()) > 50,
-            "tone": (brand_dir / "tone_of_voice.md").exists()
-                and len((brand_dir / "tone_of_voice.md").read_text(encoding="utf-8").strip()) > 50,
+            "identity": self._real_content_length(brand_dir / "identity.md") > 50,
+            "tone": self._real_content_length(brand_dir / "tone_of_voice.md") > 50,
             "product": any(
                 f.stem != "_template"
                 for f in (brand_dir / "products").glob("*.md")
