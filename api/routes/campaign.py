@@ -20,6 +20,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 from threading import Lock
 from pathlib import Path
 from src.config.settings import PROJECT_ROOT
@@ -135,6 +136,67 @@ class SessionStore:
 
 
 sessions = SessionStore(ttl_minutes=120)
+
+
+class RunBusyError(Exception):
+    """Run này đang chạy một phase khác. Route map thành HTTP 409."""
+
+
+class _RunLocks:
+    """
+    Khoá theo run_id, không xếp hàng.
+
+    Dùng Lock chứ không phải asyncio.Lock vì các endpoint phase đều là `def`
+    (sync) và chạy trong threadpool của AnyIO.
+
+    Cố tình KHÔNG chờ: hai tab cùng bấm thì tab thứ hai nhận 409 ngay. Cho xếp
+    hàng nghĩa là người dùng chờ xong rồi vẫn trả tiền cho hai lượt gọi LLM
+    làm đúng một việc.
+    """
+
+    def __init__(self):
+        self._locks: dict[str, Lock] = {}
+        self._guard = Lock()
+
+    def _lock_for(self, run_id: str) -> Lock:
+        with self._guard:
+            if run_id not in self._locks:
+                self._locks[run_id] = Lock()
+            return self._locks[run_id]
+
+    @contextmanager
+    def acquire(self, run_id: str):
+        lock = self._lock_for(run_id)
+        if not lock.acquire(blocking=False):
+            logger.info("Từ chối chạy song song trên run %s", run_id)
+            raise RunBusyError(run_id)
+        try:
+            yield
+        finally:
+            lock.release()
+
+    def discard(self, run_id: str) -> None:
+        with self._guard:
+            self._locks.pop(run_id, None)
+
+
+run_locks = _RunLocks()
+
+
+@contextmanager
+def _running(run_id: str):
+    """Giữ khoá quanh một phase, và dịch lỗi bận thành 409."""
+    try:
+        with run_locks.acquire(run_id):
+            yield
+    except RunBusyError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Chiến dịch này đang chạy một bước khác. "
+                           "Đợi bước đó xong rồi thử lại."
+            },
+        ) from e
 
 
 def _save_session(run_id: str, runner: PipelineRunner):
@@ -261,48 +323,48 @@ def approve_brief(run_id: str, edit: BriefEdit = None):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if edit:
-        runner.update_brief_fields(edit)
+    with _running(run_id):
+        if edit:
+            runner.update_brief_fields(edit)
 
-    raw_input = runner.state.get("raw_input", "")
-    brand_id = runner.state.get("brand_id")
+        raw_input = runner.state.get("raw_input", "")
+        brand_id = runner.state.get("brand_id")
 
-    def push(event):
-        progress_bus.push(run_id, event)
+        def push(event):
+            progress_bus.push(run_id, event)
 
-    # Cache key gồm cả brief (đã tính edit ở trên), nên brief khác nhau là key
-    # khác nhau — không cần loại trừ trường hợp có edit nữa.
-    cached_strategy = (
-        campaign_cache.get_strategy(raw_input, brand_id, runner.state.get("brief"))
-        if is_cacheable(runner.state)
-        else None
-    )
-    if cached_strategy:
-        runner.state["strategy"] = cached_strategy
-        progress_bus.push(run_id, {"type": "cache_hit", "node": "strategist", "message": "Chiến lược được tải từ cache."})
-        state = runner.state
-    else:
-        state = runner.phase_2_strategy(on_progress=push)
-        if not state.get("error") and state.get("strategy") and is_cacheable(state):
-            campaign_cache.set_strategy(
-                raw_input, brand_id, state.get("brief"), state["strategy"]
-            )
+        # Cache key gồm cả brief (đã tính edit ở trên), nên brief khác nhau là key
+        # khác nhau — không cần loại trừ trường hợp có edit nữa.
+        cached_strategy = (
+            campaign_cache.get_strategy(raw_input, brand_id, runner.state.get("brief"))
+            if is_cacheable(runner.state)
+            else None
+        )
+        if cached_strategy:
+            runner.state["strategy"] = cached_strategy
+            progress_bus.push(run_id, {"type": "cache_hit", "node": "strategist", "message": "Chiến lược được tải từ cache."})
+            state = runner.state
+        else:
+            state = runner.phase_2_strategy(on_progress=push)
+            if not state.get("error") and state.get("strategy") and is_cacheable(state):
+                campaign_cache.set_strategy(
+                    raw_input, brand_id, state.get("brief"), state["strategy"]
+                )
 
-    progress_bus.close(run_id)
+        progress_bus.close(run_id)
 
-    if state.get("error"):
-        raise _pipeline_error(state)
+        if state.get("error"):
+            raise _pipeline_error(state)
 
-    _save_session(run_id, runner)
+        _save_session(run_id, runner)
 
-    return PipelineStatus(
-        run_id=run_id,
-        phase="strategy_review",
-        brief=state["brief"].model_dump(),
-        strategy=state.get("strategy"),
-        cost_estimate=state["trace"].total_cost_estimate,
-    )
-
+        return PipelineStatus(
+            run_id=run_id,
+            phase="strategy_review",
+            brief=state["brief"].model_dump(),
+            strategy=state.get("strategy"),
+            cost_estimate=state["trace"].total_cost_estimate,
+        )
 
 @router.post("/{run_id}/review-strategy", response_model=PipelineStatus)
 def review_strategy(run_id: str, feedback: StrategyFeedback):
@@ -315,69 +377,74 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    raw_input = runner.state.get("raw_input", "")
-    brand_id = runner.state.get("brand_id")
+    with _running(run_id):
+        raw_input = runner.state.get("raw_input", "")
+        brand_id = runner.state.get("brand_id")
 
-    def push(event):
-        progress_bus.push(run_id, event)
+        def push(event):
+            progress_bus.push(run_id, event)
 
-    if not feedback.approved:
-        feedback_text = _compile_strategy_feedback(feedback)
-        state = runner.phase_2_strategy(feedback=feedback_text, on_progress=push)
+        if not feedback.approved:
+            feedback_text = _compile_strategy_feedback(feedback)
+            state = runner.phase_2_strategy(feedback=feedback_text, on_progress=push)
+            progress_bus.close(run_id)
+            _save_session(run_id, runner)
+
+            # Sửa lại mà hỏng thì phải báo hỏng. Trả 200 kèm chiến lược cũ nguyên
+            # si là nói dối người dùng rằng đã sửa xong.
+            if state.get("error"):
+                raise _pipeline_error(state)
+
+            return PipelineStatus(
+                run_id=run_id,
+                phase="strategy_review",
+                strategy=state.get("strategy"),
+                cost_estimate=state["trace"].total_cost_estimate,
+            )
+
+        # Approved — check content cache. Key gồm cả strategy hiện tại, nên chiến
+        # lược vừa sửa sẽ miss cache và content được sinh lại (trước đây key chỉ có
+        # raw_input nên bản sửa bị bỏ qua âm thầm).
+        cached = (
+            campaign_cache.get_content(
+                raw_input, brand_id, runner.state.get("brief"), runner.state.get("strategy")
+            )
+            if is_cacheable(runner.state)
+            else None
+        )
+        if cached:
+            runner.state["master_message"] = cached["master_message"]
+            runner.state["campaign_content"] = cached["campaign_content"]
+            runner.state["human_approved"] = True
+            progress_bus.push(run_id, {"type": "cache_hit", "node": "channel_renderer", "message": "Nội dung được tải từ cache."})
+            state = runner.state
+        else:
+            state = runner.phase_3_content(on_progress=push)
+            if not state.get("error") and state.get("campaign_content") and is_cacheable(state):
+                campaign_cache.set_content(
+                    raw_input,
+                    brand_id,
+                    state.get("brief"),
+                    state.get("strategy"),
+                    state.get("master_message"),
+                    state["campaign_content"],
+                )
+
         progress_bus.close(run_id)
+
+        if state.get("error"):
+            raise _pipeline_error(state)
+
         _save_session(run_id, runner)
 
         return PipelineStatus(
             run_id=run_id,
-            phase="strategy_review",
-            strategy=state.get("strategy"),
+            phase="content_review",
+            master_message=state["master_message"].model_dump() if state.get("master_message") else None,
+            content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            warnings=state.get("warnings") or [],
             cost_estimate=state["trace"].total_cost_estimate,
         )
-
-    # Approved — check content cache. Key gồm cả strategy hiện tại, nên chiến
-    # lược vừa sửa sẽ miss cache và content được sinh lại (trước đây key chỉ có
-    # raw_input nên bản sửa bị bỏ qua âm thầm).
-    cached = (
-        campaign_cache.get_content(
-            raw_input, brand_id, runner.state.get("brief"), runner.state.get("strategy")
-        )
-        if is_cacheable(runner.state)
-        else None
-    )
-    if cached:
-        runner.state["master_message"] = cached["master_message"]
-        runner.state["campaign_content"] = cached["campaign_content"]
-        runner.state["human_approved"] = True
-        progress_bus.push(run_id, {"type": "cache_hit", "node": "channel_renderer", "message": "Nội dung được tải từ cache."})
-        state = runner.state
-    else:
-        state = runner.phase_3_content(on_progress=push)
-        if not state.get("error") and state.get("campaign_content") and is_cacheable(state):
-            campaign_cache.set_content(
-                raw_input,
-                brand_id,
-                state.get("brief"),
-                state.get("strategy"),
-                state.get("master_message"),
-                state["campaign_content"],
-            )
-
-    progress_bus.close(run_id)
-
-    if state.get("error"):
-        raise _pipeline_error(state)
-
-    _save_session(run_id, runner)
-
-    return PipelineStatus(
-        run_id=run_id,
-        phase="content_review",
-        master_message=state["master_message"].model_dump() if state.get("master_message") else None,
-        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
-        warnings=state.get("warnings") or [],
-        cost_estimate=state["trace"].total_cost_estimate,
-    )
-
 
 @router.post("/{run_id}/review-content", response_model=PipelineStatus)
 def review_content(run_id: str, feedback: ContentFeedback):
@@ -390,45 +457,48 @@ def review_content(run_id: str, feedback: ContentFeedback):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    def push(event):
-        progress_bus.push(run_id, event)
+    with _running(run_id):
+        def push(event):
+            progress_bus.push(run_id, event)
 
-    # Apply inline edits
-    for pf in feedback.piece_feedbacks:
-        if pf.edited_body:
-            runner.update_content_piece(pf.piece_index, pf.edited_body)
+        # Apply inline edits
+        for pf in feedback.piece_feedbacks:
+            if pf.edited_body:
+                runner.update_content_piece(pf.piece_index, pf.edited_body)
 
-    if not feedback.approved:
-        feedback_text = _compile_content_feedback(feedback)
-        state = runner.phase_3_content(feedback=feedback_text, on_progress=push)
+        if not feedback.approved:
+            feedback_text = _compile_content_feedback(feedback)
+            state = runner.phase_3_content(feedback=feedback_text, on_progress=push)
+            progress_bus.close(run_id)
+            _save_session(run_id, runner)
+
+            if state.get("error"):
+                raise _pipeline_error(state)
+
+            return PipelineStatus(
+                run_id=run_id,
+                phase="content_review",
+                content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+                warnings=state.get("warnings") or [],
+                revision_count=state.get("revision_count", 0),
+                cost_estimate=state["trace"].total_cost_estimate,
+            )
+
+        # Approved — run automated review
+        state = runner.phase_4_review(on_progress=push)
         progress_bus.close(run_id)
         _save_session(run_id, runner)
 
         return PipelineStatus(
             run_id=run_id,
-            phase="content_review",
+            phase="final_review",
             content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            review_result=state["review_result"].model_dump() if state.get("review_result") else None,
             warnings=state.get("warnings") or [],
+            review_route=state.get("review_route"),
             revision_count=state.get("revision_count", 0),
             cost_estimate=state["trace"].total_cost_estimate,
         )
-
-    # Approved — run automated review
-    state = runner.phase_4_review(on_progress=push)
-    progress_bus.close(run_id)
-    _save_session(run_id, runner)
-
-    return PipelineStatus(
-        run_id=run_id,
-        phase="final_review",
-        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
-        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
-        warnings=state.get("warnings") or [],
-        review_route=state.get("review_route"),
-        revision_count=state.get("revision_count", 0),
-        cost_estimate=state["trace"].total_cost_estimate,
-    )
-
 
 @router.post("/{run_id}/quick-action")
 def quick_action(run_id: str, action: QuickActionRequest):
@@ -443,52 +513,53 @@ def quick_action(run_id: str, action: QuickActionRequest):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    piece_index = action.piece_index
-    action_type = action.action.value
-    pieces = runner.state["campaign_content"].pieces
+    with _running(run_id):
+        piece_index = action.piece_index
+        action_type = action.action.value
+        pieces = runner.state["campaign_content"].pieces
 
-    # piece_index >= 0 đã do schema đảm bảo; chỉ còn chặn vượt số piece
-    if piece_index >= len(pieces):
-        raise HTTPException(status_code=400, detail="Invalid piece index")
+        # piece_index >= 0 đã do schema đảm bảo; chỉ còn chặn vượt số piece
+        if piece_index >= len(pieces):
+            raise HTTPException(status_code=400, detail="Invalid piece index")
 
-    piece = pieces[piece_index]
-    original = piece.body
+        piece = pieces[piece_index]
+        original = piece.body
 
-    action_prompts = {
-        "rewrite": f"Viết lại hoàn toàn bài sau, giữ nguyên ý chính nhưng thay đổi cách diễn đạt:\n\n{original}",
-        "change_hook": f"Giữ nguyên nội dung chính, chỉ viết lại câu mở đầu (hook) cho hấp dẫn hơn:\n\n{original}",
-        "change_tone": f"Viết lại bài sau với tone casual, gần gũi hơn, như đang nói chuyện với bạn bè:\n\n{original}",
-        "shorter": f"Rút gọn bài sau xuống còn 60-70% độ dài hiện tại, giữ ý chính:\n\n{original}",
-        "longer": f"Mở rộng bài sau thêm 30-40% độ dài, thêm chi tiết và ví dụ:\n\n{original}",
-    }
+        action_prompts = {
+            "rewrite": f"Viết lại hoàn toàn bài sau, giữ nguyên ý chính nhưng thay đổi cách diễn đạt:\n\n{original}",
+            "change_hook": f"Giữ nguyên nội dung chính, chỉ viết lại câu mở đầu (hook) cho hấp dẫn hơn:\n\n{original}",
+            "change_tone": f"Viết lại bài sau với tone casual, gần gũi hơn, như đang nói chuyện với bạn bè:\n\n{original}",
+            "shorter": f"Rút gọn bài sau xuống còn 60-70% độ dài hiện tại, giữ ý chính:\n\n{original}",
+            "longer": f"Mở rộng bài sau thêm 30-40% độ dài, thêm chi tiết và ví dụ:\n\n{original}",
+        }
 
-    prompt = action_prompts.get(action_type, action_prompts["rewrite"])
+        prompt = action_prompts.get(action_type, action_prompts["rewrite"])
 
-    from src.config.settings import get_api_key, get_model_config
-    config = get_model_config('channel_renderer')
-    llm = ChatAnthropic(
-        model=config.get('model', 'claude-3-5-haiku-20241022'),
-        temperature=config.get('temperature', 0.7),
-        max_tokens=config.get('max_tokens', 2000),
-        api_key=get_api_key(),
-    )
+        from src.config.settings import get_api_key, get_model_config
+        config = get_model_config('channel_renderer')
+        llm = ChatAnthropic(
+            model=config.get('model', 'claude-3-5-haiku-20241022'),
+            temperature=config.get('temperature', 0.7),
+            max_tokens=config.get('max_tokens', 2000),
+            api_key=get_api_key(),
+        )
 
-    result = llm.invoke([
-        SystemMessage(content=f"Bạn là copywriter. Channel: {piece.channel.value}. Deliverable: {piece.deliverable.value}. Chỉ trả về nội dung mới, không giải thích."),
-        HumanMessage(content=prompt),
-    ])
+        result = llm.invoke([
+            SystemMessage(content=f"Bạn là copywriter. Channel: {piece.channel.value}. Deliverable: {piece.deliverable.value}. Chỉ trả về nội dung mới, không giải thích."),
+            HumanMessage(content=prompt),
+        ])
 
-    new_body = result.content.strip()
-    piece.body = new_body
-    piece.word_count = len(new_body.split())
-    _save_session(run_id, runner)
+        new_body = result.content.strip()
+        piece.body = new_body
+        piece.word_count = len(new_body.split())
+        _save_session(run_id, runner)
 
-    return {
-        "piece_index": piece_index,
-        "new_body": new_body,
-        "word_count": piece.word_count,
-        "action": action_type,
-    }
+        return {
+            "piece_index": piece_index,
+            "new_body": new_body,
+            "word_count": piece.word_count,
+            "action": action_type,
+        }
 
 @router.post("/{run_id}/retry-content", response_model=PipelineStatus)
 def retry_content(run_id: str):
@@ -502,35 +573,35 @@ def retry_content(run_id: str):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if not runner.can_retry():
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "Đã hết lượt sửa tự động. Hãy sửa tay hoặc bàn giao.",
-            },
+    with _running(run_id):
+        if not runner.can_retry():
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Đã hết lượt sửa tự động. Hãy sửa tay hoặc bàn giao.",
+                },
+            )
+
+        def push(event):
+            progress_bus.push(run_id, event)
+
+        state = runner.retry_content(on_progress=push)
+        progress_bus.close(run_id)
+        _save_session(run_id, runner)
+
+        if state.get("error"):
+            raise _pipeline_error(state)
+
+        return PipelineStatus(
+            run_id=run_id,
+            phase="final_review",
+            content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+            warnings=state.get("warnings") or [],
+            review_route=state.get("review_route"),
+            revision_count=state.get("revision_count", 0),
+            cost_estimate=state["trace"].total_cost_estimate,
         )
-
-    def push(event):
-        progress_bus.push(run_id, event)
-
-    state = runner.retry_content(on_progress=push)
-    progress_bus.close(run_id)
-    _save_session(run_id, runner)
-
-    if state.get("error"):
-        raise _pipeline_error(state)
-
-    return PipelineStatus(
-        run_id=run_id,
-        phase="final_review",
-        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
-        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
-        warnings=state.get("warnings") or [],
-        review_route=state.get("review_route"),
-        revision_count=state.get("revision_count", 0),
-        cost_estimate=state["trace"].total_cost_estimate,
-    )
-
 
 @router.post("/{run_id}/approve-final", response_model=PipelineStatus)
 def approve_final(run_id: str):
@@ -541,16 +612,16 @@ def approve_final(run_id: str):
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    state = runner.phase_5_export()
+    with _running(run_id):
+        state = runner.phase_5_export()
 
-    return PipelineStatus(
-        run_id=run_id,
-        phase="completed",
-        content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
-        review_result=state["review_result"].model_dump() if state.get("review_result") else None,
-        cost_estimate=state["trace"].total_cost_estimate,
-    )
-
+        return PipelineStatus(
+            run_id=run_id,
+            phase="completed",
+            content=state["campaign_content"].model_dump() if state.get("campaign_content") else None,
+            review_result=state["review_result"].model_dump() if state.get("review_result") else None,
+            cost_estimate=state["trace"].total_cost_estimate,
+        )
 
 @router.get("/{run_id}/download/{format}")
 def download_output(run_id: str, format: str):

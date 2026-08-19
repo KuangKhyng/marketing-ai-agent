@@ -14,6 +14,8 @@ QUAN HỆ VỚI src/graph/:
     message_architect; runner trả route ra cho người dùng quyết (xem
     retry_content). Vì mỗi lần vòng lại là tốn tiền API nên web hỏi trước.
 """
+import logging
+from datetime import datetime
 from typing import Callable, Optional
 
 from src.graph.edges import route_after_review
@@ -27,6 +29,8 @@ from src.nodes.formatter import formatter_node
 from src.models.trace import RunTrace
 from src.models.brief import CampaignBrief, CampaignGoal, BrandSpec, AudienceSpec, OfferSpec, Channel, Deliverable
 from src.models.review import ReviewResult, DimensionScore, ReviewDimension
+
+logger = logging.getLogger(__name__)
 
 _ProgressFn = Optional[Callable[[dict], None]]
 
@@ -57,6 +61,30 @@ class PipelineRunner:
     def __init__(self):
         self.state = None
 
+    def _begin_attempt(self, phase: str) -> None:
+        """
+        Bắt đầu một lượt chạy mới.
+
+        Lỗi thuộc về LƯỢT CHẠY, không thuộc về phiên. Mọi node đều mở đầu bằng
+        `if state.get("error"): return`, nên nếu không xoá ở đây thì một lần
+        Anthropic timeout sẽ giết phiên vĩnh viễn: user bấm Retry bao nhiêu lần
+        cũng chỉ nhận lại đúng lỗi cũ vì node nào cũng return ngay.
+
+        Lỗi cũ được giữ trong `last_error` để còn truy được, chứ không mất.
+        """
+        loi_cu = self.state.get("error")
+        if loi_cu:
+            self.state["last_error"] = {
+                "phase": self.state.get("current_phase") or self.state.get("current_node"),
+                "message": loi_cu,
+                "at": datetime.now().isoformat(),
+            }
+            logger.info("Chạy lại phase %s sau lỗi trước đó: %s", phase, loi_cu)
+
+        self.state["error"] = None
+        self.state["current_phase"] = phase
+        self.state["attempt"] = self.state.get("attempt", 0) + 1
+
     def phase_1_parse(self, raw_input: str, brand_id: str = None, on_progress: _ProgressFn = None) -> dict:
         self.state = self._init_state(raw_input, brand_id=brand_id)
 
@@ -72,6 +100,7 @@ class PipelineRunner:
         return self.state
 
     def phase_2_strategy(self, feedback: str = None, on_progress: _ProgressFn = None) -> dict:
+        self._begin_attempt("strategy")
         if feedback:
             self.state["strategy_feedback"] = feedback
         _emit(on_progress, "strategist")
@@ -80,6 +109,7 @@ class PipelineRunner:
         return self.state
 
     def phase_3_content(self, feedback: str = None, on_progress: _ProgressFn = None) -> dict:
+        self._begin_attempt("content")
         if feedback:
             self.state["review_result"] = ReviewResult(
                 overall_passed=False,
@@ -104,6 +134,7 @@ class PipelineRunner:
         return self.state
 
     def phase_4_review(self, on_progress: _ProgressFn = None) -> dict:
+        self._begin_attempt("review")
         _emit(on_progress, "reviewer")
         self.state.update(reviewer_node(self.state))
         _emit(on_progress, "reviewer", done=True)
@@ -123,6 +154,8 @@ class PipelineRunner:
 
         Graph làm tự động; ở đây phải do người dùng bấm.
         """
+        self._begin_attempt("content")
+
         # Giữ nguyên review_result để message_architect đọc được feedback,
         # y như graph (graph không xoá review_result khi vòng lại).
         _emit(on_progress, "message_architect")
@@ -144,6 +177,7 @@ class PipelineRunner:
         return self.state.get("review_route") == "retry"
 
     def phase_5_export(self) -> dict:
+        self._begin_attempt("export")
         self.state.update(formatter_node(self.state))
         return self.state
 
@@ -189,4 +223,7 @@ class PipelineRunner:
             "error": None,
             "warnings": [],
             "review_route": None,
+            "current_phase": None,
+            "attempt": 0,
+            "last_error": None,
         }
