@@ -27,6 +27,20 @@ from src.utils.paths import InvalidPathError, safe_join, validate_id
 
 logger = logging.getLogger(__name__)
 
+# Nhắc thẳng vào context khi không tra được tài liệu. Cố ý viết như một chỉ
+# dẫn chứ không phải một ghi chú: nó nằm trong phần dữ liệu mà node đưa cho LLM.
+KHONG_CO_BANG_CHUNG_SAN_PHAM = (
+    "KHÔNG tìm được tài liệu sản phẩm nào khớp với yêu cầu này trong kho brand.\n"
+    "TUYỆT ĐỐI không bịa đặc điểm, thành phần, giá, thông số hay cam kết. "
+    "Chỉ viết ở mức chung dựa trên brief, và tránh mọi khẳng định cụ thể về sản phẩm."
+)
+
+KHONG_CO_BANG_CHUNG_KHACH = (
+    "KHÔNG tìm được chân dung khách hàng nào khớp trong kho brand.\n"
+    "Chỉ dựa vào mô tả đối tượng trong brief, không bịa thêm hành vi, thu nhập "
+    "hay trăn trở mà không có căn cứ."
+)
+
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
 GLOBAL_DIR = KNOWLEDGE_DIR / "_global"
@@ -67,6 +81,9 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
         "mode": "branded" if brand_id else "generic",
         "brand_name": "",
         "loaded_docs": [],
+        # Có tra được tài liệu thật không. False = LLM phải kiêng nói cụ thể.
+        "product_evidence": False,
+        "audience_evidence": False,
     }
 
     # === ALWAYS LOAD: Global platform rules ===
@@ -126,7 +143,8 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
             query=f"{brief.offer.product_or_service} {brief.offer.key_message}",
             max_files=2,
         )
-        context["product"] = product_content
+        context["product"] = product_content or KHONG_CO_BANG_CHUNG_SAN_PHAM
+        context["product_evidence"] = bool(p_docs)
         context["loaded_docs"].extend([f"product:{d}" for d in p_docs])
 
         # Audience — SMART load: only matching files
@@ -135,7 +153,8 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
             query=brief.audience.persona_description,
             max_files=1,
         )
-        context["audience"] = audience_content
+        context["audience"] = audience_content or KHONG_CO_BANG_CHUNG_KHACH
+        context["audience_evidence"] = bool(a_docs)
         context["loaded_docs"].extend([f"audience:{d}" for d in a_docs])
 
         # Voice profile
@@ -167,6 +186,10 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
         # === GENERIC MODE ===
         context["voice_profile"] = _get_generic_voice_profile()
         context["audience"] = f"Target audience: {brief.audience.persona_description}"
+        # Không chọn brand thì không có kho sản phẩm nào để dựa vào
+        context["product"] = KHONG_CO_BANG_CHUNG_SAN_PHAM
+        context["product_evidence"] = False
+        context["audience_evidence"] = False
 
     context["policies"] = "\n\n---\n\n".join(policies_parts)
     return context
@@ -188,34 +211,30 @@ def _get_generic_voice_profile() -> dict:
 
 def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[str, list[str]]:
     """
-    Smart load files from a directory — only load files matching query keywords.
+    Nạp tài liệu khớp với yêu cầu.
+
+    KHÔNG có fallback lấy bừa. Không khớp thì trả rỗng, và người gọi sẽ ghi
+    lời nhắc "không có bằng chứng" vào context. Đưa nhầm tài liệu vào còn tệ
+    hơn không đưa gì: LLM sẽ coi nó là sự thật, và reviewer chấm factuality
+    dựa trên chính tài liệu sai đó nên không bắt được.
 
     Returns:
-        tuple(content_string, list_of_filenames_loaded)
+        (nội dung, tên file đã nạp). Rỗng nghĩa là không có bằng chứng.
     """
     if not directory.exists():
         return "", []
 
     files = [f for f in directory.glob("*.md") if not f.stem.startswith("_")]
     if not files:
-        # Try loading template as fallback
-        template = directory / "_template.md"
-        if template.exists():
-            content = _read_file(template)
-            # Skip empty templates with placeholder text
-            if content.strip() and "(Thêm" not in content[:50]:
-                return content, ["_template"]
         return "", []
 
-    if len(files) == 1:
-        # Only 1 file — just load it
-        return _read_file(files[0]), [files[0].stem]
-
-    # Multiple files — score by keyword match
     keywords = _extract_keywords(query)
     if not keywords:
-        # No useful keywords — load first file as fallback
-        return _read_file(files[0]), [files[0].stem]
+        logger.info(
+            "%s: yêu cầu không có từ khoá nào dùng được — không nạp tài liệu nào",
+            directory.name,
+        )
+        return "", []
 
     scored = []
     for filepath in files:
@@ -225,38 +244,32 @@ def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[st
         score = 0
         for kw in keywords:
             if kw in filename:
-                score += 3  # Filename match = high weight
-            if kw in content[:500]:  # Only check beginning (title, description)
+                score += 3          # khớp tên file = tín hiệu mạnh
+            if kw in content:       # quét TOÀN VĂN, không chỉ 500 ký tự đầu
                 score += 1
-
         scored.append((filepath, score))
 
     scored.sort(key=lambda x: x[1], reverse=True)
+    relevant = [f for f, sc in scored if sc > 0]
 
-    # Take top matches with score > 0, up to max_files
-    relevant = [f for f, s in scored if s > 0]
-    matches = relevant[:max_files]
-
-    if not matches:
-        # No keyword match at all — load first file as fallback
-        logger.info(
-            "Không file nào trong %s khớp từ khoá — dùng %s làm mặc định",
-            directory.name, files[0].name,
+    if not relevant:
+        logger.warning(
+            "%s: không tài liệu nào khớp '%s' — không nạp gì, LLM sẽ được dặn không bịa",
+            directory.name, query[:60],
         )
-        matches = [files[0]]
-    elif len(relevant) > max_files:
-        # Retrieval ở đây là keyword scoring đơn giản, không phải vector search.
-        # File bị cắt bỏ vẫn có thể liên quan — log để biết context đang thiếu
-        # gì, thay vì âm thầm bỏ.
+        return "", []
+
+    matches = relevant[:max_files]
+    if len(relevant) > max_files:
+        # Retrieval ở đây là keyword scoring, không phải vector search. File bị
+        # cắt bỏ vẫn có thể liên quan — log để biết context đang thiếu gì.
         logger.info(
             "%s: có %d file khớp nhưng chỉ nạp %d — bỏ %s",
             directory.name, len(relevant), max_files,
             ", ".join(f.name for f in relevant[max_files:]),
         )
 
-    parts = [_read_file(f) for f in matches]
-    loaded_names = [f.stem for f in matches]
-    return "\n\n---\n\n".join(parts), loaded_names
+    return "\n\n---\n\n".join(_read_file(f) for f in matches), [f.stem for f in matches]
 
 
 def _extract_keywords(text: str) -> list[str]:

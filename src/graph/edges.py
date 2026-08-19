@@ -23,9 +23,9 @@ def route_after_review(state: dict) -> str:
 
     # Check revision count
     revision_count = state.get("revision_count", 0)
-    max_revisions = state.get("max_revisions", 2)
+    max_review_attempts = state.get("max_review_attempts", 2)
 
-    if revision_count < max_revisions:
+    if revision_count < max_review_attempts:
         return "retry"
     else:
         return "max_retries"

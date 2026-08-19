@@ -174,10 +174,12 @@ class TestCoBrand:
 
 
 class TestChonFile:
-    def test_mot_file_thi_nap_thang(self, kb):
-        a_brand(kb, **{"products__duy_nhat.md": "Nội dung sản phẩm"})
-        ctx = rt.build_context_pack(a_brief(), brand_id="ca_phe_abc")
-        assert "Nội dung sản phẩm" in ctx["product"]
+    def test_mot_file_khop_thi_nap(self, kb):
+        a_brand(kb, **{"products__ca_phe.md": "Cà phê rang mộc, hạt Arabica"})
+        ctx = rt.build_context_pack(a_brief(product="cà phê rang mộc"), brand_id="ca_phe_abc")
+
+        assert "Arabica" in ctx["product"]
+        assert ctx["product_evidence"] is True
 
     def test_chon_dung_file_khop_ten(self, kb):
         a_brand(
@@ -209,29 +211,58 @@ class TestChonFile:
         so_file_nap = sum(1 for i in range(5) if f"Cà phê loại {i}" in ctx["product"])
         assert so_file_nap == 2
 
-    def test_khong_khop_tu_khoa_nao_thi_van_nap_mot_file(self, kb):
-        """Thà đưa nhầm còn hơn để context rỗng không ai biết."""
+    def test_khong_khop_thi_noi_khong_biet_chu_khong_lay_bua(self, kb):
+        """
+        Đây là hành vi ĐÃ ĐỔI. Trước đây không khớp thì lấy files[0]:
+
+            User: kem chống nắng trẻ em -> không khớp -> nạp "Serum trị mụn"
+            -> LLM coi Serum là sự thật về sản phẩm đang viết
+
+        Trong hệ AI, không biết tốt hơn biết sai — nhất là khi reviewer chấm
+        factuality dựa trên chính tài liệu bị nạp nhầm nên không bắt được.
+        """
         a_brand(
             kb,
             **{
-                "products__mot.md": "Sản phẩm một",
-                "products__hai.md": "Sản phẩm hai",
+                "products__serum_tri_mun.md": "Serum trị mụn, chứa BHA",
+                "products__toner.md": "Toner cân bằng da",
             },
         )
         ctx = rt.build_context_pack(
-            a_brief(product="thứ hoàn toàn không liên quan xyz"), brand_id="ca_phe_abc"
+            a_brief(product="kem chống nắng trẻ em"), brand_id="ca_phe_abc"
         )
-        assert ctx["product"] != ""
+
+        assert "Serum" not in ctx["product"], "không được lấy bừa tài liệu không liên quan"
+        assert "BHA" not in ctx["product"]
+        assert ctx["product_evidence"] is False
+        assert "không bịa" in ctx["product"].lower(), "phải dặn LLM đừng bịa"
+
+    def test_khong_co_tai_lieu_thi_dan_llm_dung_bia(self, kb):
+        a_brand(kb, **{"identity.md": "x"})
+        ctx = rt.build_context_pack(a_brief(), brand_id="ca_phe_abc")
+
+        assert ctx["product_evidence"] is False
+        assert "KHÔNG tìm được tài liệu sản phẩm" in ctx["product"]
+
+    def test_che_do_generic_cung_khai_bao_khong_co_bang_chung(self, kb):
+        ctx = rt.build_context_pack(a_brief())
+        assert ctx["product_evidence"] is False
+        assert "KHÔNG tìm được tài liệu sản phẩm" in ctx["product"]
+
+    def test_quet_toan_van_chu_khong_chi_500_ky_tu_dau(self, kb):
+        """Từ khoá nằm cuối file dài vẫn phải tính là khớp."""
+        dai = "Phần mở đầu dài dòng. " * 60 + "\n\nSản phẩm: cà phê rang mộc Cầu Đất"
+        a_brand(kb, **{"products__mot.md": dai, "products__hai.md": "Trà sữa"})
+
+        ctx = rt.build_context_pack(a_brief(product="cà phê rang mộc"), brand_id="ca_phe_abc")
+        assert "Cầu Đất" in ctx["product"]
 
     def test_bo_qua_file_bat_dau_bang_gach_duoi(self, kb):
         a_brand(kb, **{"products___template.md": "(Thêm sản phẩm tại đây)"})
         ctx = rt.build_context_pack(a_brief(), brand_id="ca_phe_abc")
         assert "(Thêm" not in ctx["product"], "mẫu rỗng không được vào context"
 
-    def test_khong_co_thu_muc_san_pham_thi_de_rong(self, kb):
-        a_brand(kb, **{"identity.md": "x"})
-        ctx = rt.build_context_pack(a_brief(), brand_id="ca_phe_abc")
-        assert ctx["product"] == ""
+
 
 
 # === Tách từ khoá ===

@@ -22,6 +22,7 @@ Run đã đi qua vòng sửa của user thì không đọc/ghi cache — xem `is
 import hashlib
 import logging
 import pickle
+from functools import lru_cache
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
@@ -45,6 +46,58 @@ def _digest(*parts: str) -> str:
     for p in parts:
         h.update(b"\x1f")
         h.update((p or "").strip().lower().encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
+@lru_cache(maxsize=1)
+def _system_digest(dau_van: float) -> str:
+    """
+    Chữ ký của prompt + cấu hình model.
+
+    Sửa prompt hoặc đổi model thì kết quả cũ không còn so sánh được nữa, phải
+    sinh lại. Tham số `dau_van` là mtime lớn nhất trong các file đó — đổi file
+    là đổi khoá, không cần restart server.
+    """
+    h = hashlib.sha256()
+    for path in sorted(_SYSTEM_FILES):
+        if path.exists():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:12]
+
+
+def _system_files() -> list[Path]:
+    files = list((PROJECT_ROOT / "src" / "prompts" / "v1").glob("*.md"))
+    files.append(PROJECT_ROOT / "src" / "config" / "models.yaml")
+    return files
+
+
+_SYSTEM_FILES = _system_files()
+
+
+def system_version() -> str:
+    """Phiên bản prompt+model hiện tại, dùng làm một phần khoá cache."""
+    mtimes = [p.stat().st_mtime for p in _SYSTEM_FILES if p.exists()]
+    return _system_digest(max(mtimes) if mtimes else 0.0)
+
+
+def knowledge_digest(context_pack: Any) -> str:
+    """
+    Chữ ký của knowledge đã thật sự được nạp cho lần chạy này.
+
+    Lấy từ context_pack chứ không phải quét cả knowledge_base: cái vào prompt
+    mới là cái ảnh hưởng kết quả. Sửa một brand khác thì không cần bỏ cache của
+    brand này.
+    """
+    if not isinstance(context_pack, dict):
+        return ""
+
+    h = hashlib.sha256()
+    for khoa in sorted(context_pack):
+        if khoa in ("loaded_docs", "mode", "brand_id"):
+            continue  # metadata, không phải nội dung
+        h.update(khoa.encode("utf-8"))
+        h.update(b"\x1f")
+        h.update(repr(context_pack[khoa]).encode("utf-8", "replace"))
     return h.hexdigest()[:16]
 
 
@@ -80,13 +133,31 @@ class CampaignCache:
 
     # === Strategy (phase 2) ===
 
-    def strategy_key(self, raw_input: str, brand_id: Optional[str], brief: Any) -> str:
-        return _digest("strategy", raw_input, brand_id or "", _brief_digest(brief))
+    def strategy_key(
+        self,
+        raw_input: str,
+        brand_id: Optional[str],
+        brief: Any,
+        context_pack: Any = None,
+    ) -> str:
+        return _digest(
+            "strategy",
+            raw_input,
+            brand_id or "",
+            _brief_digest(brief),
+            knowledge_digest(context_pack),
+            system_version(),
+        )
 
     def get_strategy(
-        self, raw_input: str, brand_id: Optional[str], brief: Any = None
+        self,
+        raw_input: str,
+        brand_id: Optional[str],
+        brief: Any = None,
+        context_pack: Any = None,
     ) -> Optional[str]:
-        path = _CACHE_DIR / self.strategy_key(raw_input, brand_id, brief) / "strategy.txt"
+        key = self.strategy_key(raw_input, brand_id, brief, context_pack)
+        path = _CACHE_DIR / key / "strategy.txt"
         if self._valid(path):
             try:
                 return path.read_text(encoding="utf-8")
@@ -95,10 +166,15 @@ class CampaignCache:
         return None
 
     def set_strategy(
-        self, raw_input: str, brand_id: Optional[str], brief: Any, strategy: str
+        self,
+        raw_input: str,
+        brand_id: Optional[str],
+        brief: Any,
+        strategy: str,
+        context_pack: Any = None,
     ) -> None:
         try:
-            key = self.strategy_key(raw_input, brand_id, brief)
+            key = self.strategy_key(raw_input, brand_id, brief, context_pack)
             (self._dir(key) / "strategy.txt").write_text(strategy, encoding="utf-8")
         except OSError as e:
             logger.warning("Không ghi được strategy cache: %s", e)
@@ -106,10 +182,21 @@ class CampaignCache:
     # === Content (phase 3) ===
 
     def content_key(
-        self, raw_input: str, brand_id: Optional[str], brief: Any, strategy: Optional[str]
+        self,
+        raw_input: str,
+        brand_id: Optional[str],
+        brief: Any,
+        strategy: Optional[str],
+        context_pack: Any = None,
     ) -> str:
         return _digest(
-            "content", raw_input, brand_id or "", _brief_digest(brief), strategy or ""
+            "content",
+            raw_input,
+            brand_id or "",
+            _brief_digest(brief),
+            strategy or "",
+            knowledge_digest(context_pack),
+            system_version(),
         )
 
     def get_content(
@@ -118,8 +205,10 @@ class CampaignCache:
         brand_id: Optional[str],
         brief: Any = None,
         strategy: Optional[str] = None,
+        context_pack: Any = None,
     ) -> Optional[dict]:
-        path = _CACHE_DIR / self.content_key(raw_input, brand_id, brief, strategy) / "content.pkl"
+        key = self.content_key(raw_input, brand_id, brief, strategy, context_pack)
+        path = _CACHE_DIR / key / "content.pkl"
         if self._valid(path):
             try:
                 with open(path, "rb") as f:
@@ -138,9 +227,10 @@ class CampaignCache:
         strategy: Optional[str],
         master_message: Any,
         campaign_content: Any,
+        context_pack: Any = None,
     ) -> None:
         try:
-            key = self.content_key(raw_input, brand_id, brief, strategy)
+            key = self.content_key(raw_input, brand_id, brief, strategy, context_pack)
             with open(self._dir(key) / "content.pkl", "wb") as f:
                 pickle.dump(
                     {"master_message": master_message, "campaign_content": campaign_content},

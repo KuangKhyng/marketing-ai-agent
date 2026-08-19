@@ -20,6 +20,7 @@ from typing import Callable, Optional
 
 from src.graph.edges import route_after_review
 from src.nodes.brief_parser import brief_parser_node
+from src.nodes.quick_action import invalidate_review, quick_action_node
 from src.nodes.context_builder import context_builder_node
 from src.nodes.strategist import strategist_node
 from src.nodes.message_architect import message_architect_node
@@ -203,6 +204,19 @@ class PipelineRunner:
         if 0 <= index < len(pieces):
             pieces[index].body = new_body
             pieces[index].word_count = len(new_body.split())
+            # Sửa tay cũng là sửa: điểm chấm cũ không còn nói gì về bản này.
+            self.state.update(invalidate_review())
+
+    def quick_action(self, piece_index: int, action: str) -> dict:
+        """
+        Sửa nhanh một piece.
+
+        Đi qua node để nhận đủ context brand/product/policy/voice như
+        channel_renderer, và để lượt gọi này vào trace chi phí.
+        """
+        self._begin_attempt("quick_action")
+        self.state.update(quick_action_node(self.state, piece_index, action))
+        return self.state
 
     def _init_state(self, raw_input: str, brand_id: str = None) -> dict:
         return {
@@ -217,7 +231,7 @@ class PipelineRunner:
             "campaign_content": None,
             "review_result": None,
             "revision_count": 0,
-            "max_revisions": 2,
+            "max_review_attempts": 2,
             "trace": RunTrace(),
             "current_node": "",
             "error": None,

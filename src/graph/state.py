@@ -37,7 +37,8 @@ class CampaignState(TypedDict):
     # Review
     review_result: Optional[ReviewResult]       # review scores and feedback
     revision_count: int                         # number of revision loops done
-    max_revisions: int                          # max allowed (default 2)
+    max_review_attempts: int                    # số lượt CHẤM tối đa (mặc định 2).
+                                            # 2 lượt chấm = 1 lượt sửa, xem edges.route_after_review
 
     # Trace
     trace: Optional[RunTrace]                   # full run trace

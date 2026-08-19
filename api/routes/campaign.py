@@ -336,7 +336,12 @@ def approve_brief(run_id: str, edit: BriefEdit = None):
         # Cache key gồm cả brief (đã tính edit ở trên), nên brief khác nhau là key
         # khác nhau — không cần loại trừ trường hợp có edit nữa.
         cached_strategy = (
-            campaign_cache.get_strategy(raw_input, brand_id, runner.state.get("brief"))
+            campaign_cache.get_strategy(
+                raw_input,
+                brand_id,
+                runner.state.get("brief"),
+                runner.state.get("context_pack"),
+            )
             if is_cacheable(runner.state)
             else None
         )
@@ -348,7 +353,11 @@ def approve_brief(run_id: str, edit: BriefEdit = None):
             state = runner.phase_2_strategy(on_progress=push)
             if not state.get("error") and state.get("strategy") and is_cacheable(state):
                 campaign_cache.set_strategy(
-                    raw_input, brand_id, state.get("brief"), state["strategy"]
+                    raw_input,
+                    brand_id,
+                    state.get("brief"),
+                    state["strategy"],
+                    state.get("context_pack"),
                 )
 
         progress_bus.close(run_id)
@@ -407,7 +416,11 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
         # raw_input nên bản sửa bị bỏ qua âm thầm).
         cached = (
             campaign_cache.get_content(
-                raw_input, brand_id, runner.state.get("brief"), runner.state.get("strategy")
+                raw_input,
+                brand_id,
+                runner.state.get("brief"),
+                runner.state.get("strategy"),
+                runner.state.get("context_pack"),
             )
             if is_cacheable(runner.state)
             else None
@@ -428,6 +441,7 @@ def review_strategy(run_id: str, feedback: StrategyFeedback):
                     state.get("strategy"),
                     state.get("master_message"),
                     state["campaign_content"],
+                    state.get("context_pack"),
                 )
 
         progress_bus.close(run_id)
@@ -503,63 +517,50 @@ def review_content(run_id: str, feedback: ContentFeedback):
 @router.post("/{run_id}/quick-action")
 def quick_action(run_id: str, action: QuickActionRequest):
     """
-    Quick action on a single content piece.
-    Actions: rewrite, change_hook, change_tone, shorter, longer
-    """
-    from langchain_anthropic import ChatAnthropic
-    from langchain_core.messages import HumanMessage, SystemMessage
+    Sửa nhanh một piece: viết lại / đổi hook / đổi tone / ngắn hơn / dài hơn.
 
+    Việc thật nằm ở src/nodes/quick_action.py — route không tự dựng lời gọi LLM
+    nữa. Lý do: bản cũ gọi thẳng ở đây với một prompt cô lập, nên nó đi vòng
+    qua toàn bộ ràng buộc brand mà generator và reviewer đều phải tuân theo.
+    """
     runner = sessions.get(run_id)
     if not runner:
         raise HTTPException(status_code=404, detail="Session not found")
 
     with _running(run_id):
-        piece_index = action.piece_index
-        action_type = action.action.value
-        pieces = runner.state["campaign_content"].pieces
+        content = runner.state.get("campaign_content")
+        if content is None:
+            raise HTTPException(
+                status_code=409, detail={"message": "Chưa có nội dung nào để sửa."}
+            )
 
-        # piece_index >= 0 đã do schema đảm bảo; chỉ còn chặn vượt số piece
-        if piece_index >= len(pieces):
+        if action.piece_index >= len(content.pieces):
             raise HTTPException(status_code=400, detail="Invalid piece index")
 
-        piece = pieces[piece_index]
-        original = piece.body
+        try:
+            state = runner.quick_action(action.piece_index, action.action.value)
+        except Exception as e:
+            logger.exception("Quick action %s hỏng", action.action.value)
+            raise HTTPException(
+                status_code=500,
+                detail={"message": "Không sửa được nội dung. Vui lòng thử lại."},
+            ) from e
 
-        action_prompts = {
-            "rewrite": f"Viết lại hoàn toàn bài sau, giữ nguyên ý chính nhưng thay đổi cách diễn đạt:\n\n{original}",
-            "change_hook": f"Giữ nguyên nội dung chính, chỉ viết lại câu mở đầu (hook) cho hấp dẫn hơn:\n\n{original}",
-            "change_tone": f"Viết lại bài sau với tone casual, gần gũi hơn, như đang nói chuyện với bạn bè:\n\n{original}",
-            "shorter": f"Rút gọn bài sau xuống còn 60-70% độ dài hiện tại, giữ ý chính:\n\n{original}",
-            "longer": f"Mở rộng bài sau thêm 30-40% độ dài, thêm chi tiết và ví dụ:\n\n{original}",
-        }
-
-        prompt = action_prompts.get(action_type, action_prompts["rewrite"])
-
-        from src.config.settings import get_api_key, get_model_config
-        config = get_model_config('channel_renderer')
-        llm = ChatAnthropic(
-            model=config.get('model', 'claude-3-5-haiku-20241022'),
-            temperature=config.get('temperature', 0.7),
-            max_tokens=config.get('max_tokens', 2000),
-            api_key=get_api_key(),
-        )
-
-        result = llm.invoke([
-            SystemMessage(content=f"Bạn là copywriter. Channel: {piece.channel.value}. Deliverable: {piece.deliverable.value}. Chỉ trả về nội dung mới, không giải thích."),
-            HumanMessage(content=prompt),
-        ])
-
-        new_body = result.content.strip()
-        piece.body = new_body
-        piece.word_count = len(new_body.split())
         _save_session(run_id, runner)
 
+        piece = state["campaign_content"].pieces[action.piece_index]
         return {
-            "piece_index": piece_index,
-            "new_body": new_body,
+            "piece_index": action.piece_index,
+            "hook": piece.hook,
+            "new_body": piece.body,
+            "cta_text": piece.cta_text,
             "word_count": piece.word_count,
-            "action": action_type,
+            "action": action.action.value,
+            # Nội dung đổi thì điểm chấm cũ hết hiệu lực — UI phải cho chấm lại
+            "review_invalidated": True,
+            "cost_estimate": state["trace"].total_cost_estimate,
         }
+
 
 @router.post("/{run_id}/retry-content", response_model=PipelineStatus)
 def retry_content(run_id: str):

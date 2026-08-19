@@ -77,8 +77,11 @@ def formatter_node(state: dict) -> dict:
             encoding="utf-8",
         )
 
-        # 4. Print to console
-        _print_console_output(content, brief, review_result, trace, run_dir)
+        # KHÔNG in nội dung ra stdout ở đây.
+        #
+        # Web API dùng chung node này, mà log server đi stdout — in ra là đẩy
+        # nguyên campaign chưa công bố của khách vào log nền tảng. CLI muốn
+        # xem thì tự gọi print_console_output().
 
         node_trace.output_summary = f"Saved to {run_dir}"
         node_trace.finished_at = datetime.now()
@@ -249,6 +252,23 @@ def _build_json(content, brief, review_result, trace) -> dict:
             "cost_estimate": trace.total_cost_estimate,
         },
     }
+
+
+def print_console_output(state: dict) -> None:
+    """
+    In kết quả ra terminal. CHỈ dùng cho CLI.
+
+    Tách khỏi formatter_node vì web API dùng chung node đó và log server đi
+    stdout — xem R6.
+    """
+    trace = state.get("trace") or RunTrace()
+    _print_console_output(
+        state["campaign_content"],
+        state["brief"],
+        state.get("review_result"),
+        trace,
+        OUTPUTS_DIR / trace.run_id,
+    )
 
 
 def _print_console_output(content, brief, review_result, trace, run_dir):
