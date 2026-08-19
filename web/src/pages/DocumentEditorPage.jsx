@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -116,8 +116,6 @@ export default function DocumentEditorPage() {
   const [loading, setLoading] = useState(true);
   const [isNew, setIsNew] = useState(false);
 
-  useEffect(() => { loadDocument(); }, [brandId, docPath]);
-
   // Lưu nháp vào máy mỗi 30s để mất mạng không mất bài
   useEffect(() => {
     const key = `draft_${brandId}_${docPath}`;
@@ -127,7 +125,7 @@ export default function DocumentEditorPage() {
     return () => clearInterval(interval);
   }, [content, originalContent, brandId, docPath]);
 
-  const loadDocument = async () => {
+  const loadDocument = useCallback(async () => {
     try {
       const { data } = await brandsAPI.getDoc(brandId, docPath);
       setContent(data.content);
@@ -141,7 +139,11 @@ export default function DocumentEditorPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [brandId, docPath]);
+
+  // Đặt sau khai báo loadDocument: mảng deps được tính lúc render nên tham
+  // chiếu tới const chưa khởi tạo sẽ ném ReferenceError.
+  useEffect(() => { loadDocument(); }, [loadDocument]);
 
   const saveDocument = async () => {
     setSaving(true);

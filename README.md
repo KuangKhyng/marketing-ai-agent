@@ -124,18 +124,47 @@ pytest                              # không gọi Anthropic API, chạy offline
 python scripts/smoke_real_api.py all   # gọi API THẬT, có tốn tiền
 ```
 
-## 🧱 Nạp liệu cho brand mới
+## 🧱 Dựng brand từ tài liệu
 
-Brand mới tạo xong chỉ có file markdown rỗng kèm placeholder. Thay vì bắt người
-dùng nhìn màn hình trắng và đoán phải viết gì, tab **Nạp liệu** đọc tài liệu họ
-đã có sẵn:
+Tài liệu là **điểm xuất phát**, không phải thứ nhét vào sau khi đã có brand.
 
-| Chặng | Đưa vào | Rút ra |
-|-------|---------|--------|
-| 1 | Vài bài brand đã đăng | `voice_profile.json`, `tone_of_voice.md`, `content_framework.md` |
-| 2 | Hồ sơ công ty, mô tả sản phẩm, ghi chú khách hàng | `identity.md`, `products/`, `audience/`, gợi ý `forbidden_claims` / `mandatory_terms` |
+**Tạo brand mới** (`Kho brand → Thêm brand`): dán bài đã đăng và hồ sơ brand →
+hệ thống đọc rồi đề xuất luôn cả tên, mã brand, nhận diện, giọng văn, sản phẩm,
+chân dung khách → bạn sửa và bỏ bớt → tạo. Chưa có tài liệu gì thì vẫn có lối
+thoát "tạo brand trống".
 
-Chạy lại chặng nào cũng được, nạp thêm tài liệu bất cứ lúc nào.
+**Bổ sung về sau** (tab `Nạp liệu` trong trang brand): cùng cơ chế, chạy trên
+brand đã tồn tại, nạp thêm lúc nào cũng được.
+
+| Loại tài liệu | Rút ra |
+|---------------|--------|
+| Bài brand đã đăng | `voice_profile.json`, `tone_of_voice.md`, `content_framework.md` |
+| Hồ sơ công ty, mô tả sản phẩm, ghi chú khách hàng | `identity.md`, `products/`, `audience/`, gợi ý `forbidden_claims` / `mandatory_terms` |
+
+Một trong hai loại là đủ; thiếu loại nào thì phần đó để trống chứ không hỏng.
+Hai loại chạy bằng hai prompt riêng, cố tình **không gộp** thành một lượt gọi vì
+chúng có lập trường ngược nhau: cái đọc bài đăng thì *mô tả cách brand đang
+viết*, cái đọc tài liệu thì *coi tài liệu là nguồn sự thật, thiếu thì để trống*.
+
+Nguyên văn tài liệu bạn dán được giữ ở `_sources/*.txt` trong thư mục brand —
+retriever không đọc thư mục này, nó nằm đó để sau này đọc lại được bằng prompt
+tốt hơn mà không phải đi tìm bài cũ.
+
+**Nhân bản brand** (`Thêm brand → Nhân bản brand có sẵn`): giữ giọng, khung bài,
+chân dung khách và ràng buộc nội dung, **mặc định bỏ sản phẩm** — đó thường là
+lý do người ta nhân bản. Chỉ chép file, không gọi AI.
+
+### Chi phí
+
+Mỗi lượt đọc tài liệu là một lần gọi Sonnet có tính tiền, nên:
+
+- **Hỏi giá trước.** `POST /brands/bootstrap/estimate` tính số ký tự và ước
+  tính chi phí mà không gọi LLM; UI bắt xác nhận trước khi đọc thật.
+- **Cache theo nội dung.** Đọc lại đúng tài liệu cũ thì lấy kết quả đã lưu,
+  không gọi API lần nữa. Khoá cache gồm cả prompt, nên sửa prompt là kết quả cũ
+  tự hết giá trị.
+- **Đo thật.** Mỗi lần đọc trả về `usage` (token vào/ra, chi phí, `cached`) và
+  UI hiện ra — không ai tiêu tiền mà không thấy.
 
 **Vì sao luôn phải có bước người duyệt.** `knowledge_base/` là nguồn sự thật của
 pipeline — reviewer chấm `factuality` dựa vào nó, và `brief_parser` cố tình ghi
@@ -225,7 +254,8 @@ brief qua cả hai đường rồi so thứ tự node để phát hiện lệch.
 │           ├── voice_profile.json
 │           ├── products/
 │           ├── audience/
-│           └── policies/
+│           ├── policies/
+│           └── _sources/          # nguyên văn tài liệu đã nạp (.txt, không vào context)
 ├── web/                    # React frontend (Vite)
 │   └── src/
 │       ├── pages/          # 9 trang: Input -> ... -> Export, Brands, Editor

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { brandsAPI } from '../api/client';
-import { Loader2, Plus, X, FileText, Check } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Loader2, Plus, X, Check } from 'lucide-react';
+import DraftReview from './DraftReview';
+import { countChosen } from '../utils/draft';
+import { formatCost } from '../utils/cost';
 
 /*
  * Nạp liệu cho knowledge base của brand.
@@ -24,6 +25,7 @@ const STAGES = {
     placeholder:
       'Dán nguyên văn một bài đã đăng, kể cả emoji và hashtag.\n\nCàng nhiều bài thì càng rút được đúng, 3–5 bài là đủ dùng.',
     call: (brandId, chunks) => brandsAPI.bootstrapVoice(brandId, chunks),
+    estimatePayload: (chunks) => ({ samples: chunks, documents: [] }),
   },
   brand: {
     label: 'Tài liệu brand',
@@ -32,6 +34,7 @@ const STAGES = {
     placeholder:
       'Dán tài liệu về brand: bạn bán gì, cho ai, điều gì khiến khách chọn bạn.\n\nCó gì dán nấy — thiếu chỗ nào hệ thống sẽ nói ra chỗ đó.',
     call: (brandId, chunks) => brandsAPI.bootstrapBrand(brandId, chunks),
+    estimatePayload: (chunks) => ({ samples: [], documents: chunks }),
   },
 };
 
@@ -40,10 +43,11 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
   const [chunks, setChunks] = useState(['']);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);
+  // Hỏi giá trước khi đọc — xem BrandCreate, cùng lý do
+  const [estimate, setEstimate] = useState(null);
   const [chosen, setChosen] = useState({});      // path -> bool
   const [takeVoice, setTakeVoice] = useState(true);
   const [takeMeta, setTakeMeta] = useState(true);
-  const [compare, setCompare] = useState({});    // path -> bool
 
   const cfg = STAGES[stage];
   const filled = chunks.filter(c => c.trim().length > 0);
@@ -52,11 +56,29 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
     setStage(next);
     setChunks(['']);
     setDraft(null);
+    setEstimate(null);
+  };
+
+  const handleAskPrice = async () => {
+    setBusy(true);
+    try {
+      const { data } = await brandsAPI.bootstrapEstimate(cfg.estimatePayload(filled));
+      if (data.cached) {
+        await handleExtract();
+      } else {
+        setEstimate(data);
+      }
+    } catch {
+      setEstimate({ estimated_cost: null, input_chars: 0, cached: false });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleExtract = async () => {
     setBusy(true);
     setDraft(null);
+    setEstimate(null);
     try {
       const { data } = await cfg.call(brandId, filled);
       setDraft(data);
@@ -78,10 +100,18 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
   const handleApply = async () => {
     setBusy(true);
     try {
+      // Giữ nguyên văn tài liệu, như luồng tạo brand. Tên đặt theo chặng để
+      // sau nhìn vào _sources/ biết ngay bài đăng hay hồ sơ brand.
+      const sources = {};
+      filled.forEach((text, i) => {
+        sources[`${stage === 'voice' ? 'bai_dang' : 'tai_lieu'}_${i + 1}`] = text;
+      });
+
       await brandsAPI.bootstrapApply(brandId, {
         files: draft.files.filter(f => chosen[f.path]),
         voice_profile: takeVoice ? draft.voice_profile : null,
         brand_meta: takeMeta ? draft.brand_meta : null,
+        sources,
       });
       showToast('Đã lưu vào kho brand.');
       setDraft(null);
@@ -94,10 +124,7 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
     }
   };
 
-  const soChon =
-    Object.values(chosen).filter(Boolean).length +
-    (takeVoice && draft?.voice_profile ? 1 : 0) +
-    (takeMeta && Object.keys(draft?.brand_meta || {}).length ? 1 : 0);
+  const soChon = countChosen(draft, chosen, takeVoice, takeMeta);
 
   return (
     <div>
@@ -151,24 +178,49 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
-            <button onClick={() => setChunks([...chunks, ''])} disabled={busy} className="btn btn-quiet">
-              <Plus className="w-4 h-4" /> Thêm {cfg.itemLabel.toLowerCase()}
-            </button>
-            <button
-              onClick={handleExtract}
-              disabled={busy || filled.length === 0}
-              className="btn btn-primary"
-            >
-              {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-              {busy ? 'Đang đọc' : 'Đọc và đề xuất'}
-            </button>
-          </div>
+          {estimate ? (
+            <div className="sheet px-5 py-4" style={{ borderLeft: '2px solid var(--warn)' }}>
+              <p className="t-label mb-1.5">Xác nhận trước khi đọc</p>
+              <p className="text-[0.9375rem] mb-1">
+                Sẽ đọc <strong>{estimate.input_chars.toLocaleString('vi-VN')}</strong> ký tự
+                {estimate.estimated_cost != null && (
+                  <> — ước tính <strong>{formatCost(estimate.estimated_cost)}</strong></>
+                )}
+              </p>
+              <p className="text-[0.875rem] text-ink-2 mb-3">
+                Đọc lại đúng tài liệu này lần sau sẽ không mất phí.
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                <button onClick={handleExtract} disabled={busy} className="btn btn-primary">
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {busy ? 'Đang đọc' : 'Đọc ngay'}
+                </button>
+                <button onClick={() => setEstimate(null)} disabled={busy} className="btn btn-quiet">
+                  Để sửa lại tài liệu đã
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2.5">
+                <button onClick={() => setChunks([...chunks, ''])} disabled={busy} className="btn btn-quiet">
+                  <Plus className="w-4 h-4" /> Thêm {cfg.itemLabel.toLowerCase()}
+                </button>
+                <button
+                  onClick={handleAskPrice}
+                  disabled={busy || filled.length === 0}
+                  className="btn btn-primary"
+                >
+                  {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {busy ? 'Đang tính' : 'Đọc và đề xuất'}
+                </button>
+              </div>
 
-          {busy && (
-            <p className="mt-3 text-[0.8125rem] text-ink-3">
-              Thường mất 20–40 giây. Chưa có gì được ghi vào kho brand cho tới khi bạn duyệt.
-            </p>
+              <p className="mt-3 text-[0.8125rem] text-ink-3">
+                Bước đọc dùng AI và có tính phí — sẽ hiện giá để bạn xác nhận trước. Chưa có gì
+                được ghi vào kho brand cho tới khi bạn duyệt.
+              </p>
+            </>
           )}
         </>
       )}
@@ -181,103 +233,24 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
             <p className="text-[0.9375rem]">
               Chọn phần bạn muốn giữ. Bỏ chọn thì không ghi gì vào file đó.
             </p>
-          </div>
-
-          {draft.notes?.length > 0 && (
-            <div className="sheet px-5 py-4 mb-6" style={{ borderLeft: '2px solid var(--warn)' }}>
-              <p className="t-label mb-2">Tài liệu chưa nói tới</p>
-              {draft.notes.map((n, i) => (
-                <p key={i} className="text-[0.875rem] text-ink-2 leading-relaxed">{n}</p>
-              ))}
+            {draft.usage && (
               <p className="text-[0.8125rem] text-ink-3 mt-2">
-                Những chỗ này hệ thống cố tình để trống thay vì đoán. Bạn tự điền sau ở tab Tài liệu.
+                {draft.usage.cached
+                  ? 'Lấy lại từ lần đọc trước, không tốn thêm phí.'
+                  : `Lần đọc này tốn khoảng ${formatCost(draft.usage.cost_estimate)}.`}
               </p>
-            </div>
-          )}
-
-          <div className="space-y-3 mb-6">
-            {draft.files.map(f => (
-              <div key={f.path} className="sheet">
-                <label className="flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(chosen[f.path])}
-                    onChange={e => setChosen({ ...chosen, [f.path]: e.target.checked })}
-                    className="mt-1"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 flex-wrap">
-                      <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="text-[0.9375rem] font-medium">{f.label || f.path}</span>
-                      <span className="font-data text-[0.75rem] text-ink-3">{f.path}</span>
-                      {f.exists && <span className="tag tag-warn">Ghi đè nội dung cũ</span>}
-                    </span>
-                  </span>
-                </label>
-
-                <div className="px-5 pb-4">
-                  {f.exists && (
-                    <button
-                      onClick={() => setCompare({ ...compare, [f.path]: !compare[f.path] })}
-                      className="btn btn-quiet !py-1.5 !px-2.5 !text-[0.75rem] mb-3"
-                    >
-                      {compare[f.path] ? 'Xem bản đề xuất' : 'So với bản đang có'}
-                    </button>
-                  )}
-                  <div className="md !text-[0.875rem] max-h-72 overflow-y-auto border-t border-rule pt-3">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {compare[f.path] ? f.current || '_(trống)_' : f.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {draft.voice_profile && (
-              <label className="sheet flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={takeVoice}
-                  onChange={e => setTakeVoice(e.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="text-[0.9375rem] font-medium">Hồ sơ giọng</span>
-                  <span className="font-data text-[0.75rem] text-ink-3 ml-2">voice_profile.json</span>
-                  <p className="text-[0.875rem] text-ink-2 mt-1">
-                    Tone {draft.voice_profile.tone?.primary}, mức trang trọng{' '}
-                    {draft.voice_profile.tone?.formality}, {draft.voice_profile.anti_ai_rules?.length || 0} quy tắc
-                    tránh giọng AI
-                  </p>
-                </span>
-              </label>
-            )}
-
-            {Object.keys(draft.brand_meta || {}).length > 0 && (
-              <label className="sheet flex items-start gap-3 px-5 py-3.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={takeMeta}
-                  onChange={e => setTakeMeta(e.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="text-[0.9375rem] font-medium">Ràng buộc nội dung</span>
-                  <span className="font-data text-[0.75rem] text-ink-3 ml-2">brand.json</span>
-                  {draft.brand_meta.forbidden_claims?.length > 0 && (
-                    <p className="text-[0.875rem] text-ink-2 mt-1">
-                      Không được nói: {draft.brand_meta.forbidden_claims.join(' · ')}
-                    </p>
-                  )}
-                  {draft.brand_meta.mandatory_terms?.length > 0 && (
-                    <p className="text-[0.875rem] text-ink-2 mt-1">
-                      Bắt buộc có: {draft.brand_meta.mandatory_terms.join(' · ')}
-                    </p>
-                  )}
-                </span>
-              </label>
             )}
           </div>
+
+          <DraftReview
+            draft={draft}
+            chosen={chosen}
+            setChosen={setChosen}
+            takeVoice={takeVoice}
+            setTakeVoice={setTakeVoice}
+            takeMeta={takeMeta}
+            setTakeMeta={setTakeMeta}
+          />
 
           <div className="flex flex-wrap gap-2.5 pt-5 border-t border-rule">
             <button onClick={() => setDraft(null)} disabled={busy} className="btn btn-quiet">

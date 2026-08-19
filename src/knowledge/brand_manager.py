@@ -12,6 +12,7 @@ Each brand lives in knowledge_base/brands/{brand_id}/ with:
   - policies/*.md
 """
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,8 @@ from datetime import datetime
 from src.config.settings import PROJECT_ROOT
 from src.utils.paths import InvalidPathError, is_valid_id, safe_join, validate_id
 
+logger = logging.getLogger(__name__)
+
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
 GLOBAL_DIR = KNOWLEDGE_DIR / "_global"
@@ -27,6 +30,58 @@ GLOBAL_DIR = KNOWLEDGE_DIR / "_global"
 
 class BrandExistsError(Exception):
     """Đã có dữ liệu ở thư mục brand này — route layer map thành HTTP 409."""
+
+
+def real_content_length(text: str) -> int:
+    """
+    Độ dài phần nội dung THẬT của một markdown, bỏ khung và placeholder.
+
+    create_brand() sinh file mẫu đầy placeholder kiểu "(Thêm brand identity
+    tại đây)" — riêng phần khung đó đã dài hơn 50 ký tự, nên phép đo ngây thơ
+    len(file) > 50 sẽ chấm brand rỗng hoàn toàn là đã hoàn thành một nửa.
+    Điểm hoàn thiện mà nói dối thì tệ hơn là không có.
+
+    Dùng chung cho file đã ghi lẫn nội dung mới đang là đề xuất.
+    """
+    real = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        body = line.lstrip("-*").strip()
+        # "(Sứ mệnh)", "- (Giá trị 1)", "_(chưa có trong tài liệu)_"
+        if body.startswith("(") and body.endswith(")"):
+            continue
+        if body.startswith("_(") and body.endswith(")_"):
+            continue
+        real.append(body)
+
+    return len(" ".join(real))
+
+
+def completeness_from_contents(contents: dict[str, str]) -> dict:
+    """
+    Tính điểm hoàn thiện từ nội dung, không cần đụng đĩa.
+
+    contents: {"identity.md": "...", "products/san_pham.md": "...", ...}
+    Dùng để xem trước brand sẽ đầy tới đâu TRƯỚC KHI tạo nó.
+    """
+    def has_real(path: str) -> bool:
+        return real_content_length(contents.get(path, "")) > 50
+
+    def has_any_in(prefix: str) -> bool:
+        return any(
+            path.startswith(prefix) and real_content_length(text) > 0
+            for path, text in contents.items()
+        )
+
+    checks = {
+        "identity": has_real("identity.md"),
+        "tone": has_real("tone_of_voice.md"),
+        "product": has_any_in("products/"),
+        "audience": has_any_in("audience/"),
+    }
+    return {"score": sum(25 for v in checks.values() if v), "checks": checks}
 
 
 class BrandManager:
@@ -187,6 +242,86 @@ class BrandManager:
 
         return meta
 
+    def clone_brand(
+        self,
+        source_id: str,
+        new_id: str,
+        name: str,
+        description: str = "",
+        color: str = "#6c5ce7",
+        icon: str = "📦",
+        include_products: bool = False,
+    ) -> dict:
+        """
+        Nhân bản một brand: giữ nhận diện, giọng, khung bài, khách hàng, quy
+        định — nhưng MẶC ĐỊNH bỏ sản phẩm.
+
+        Vì sao mặc định bỏ: người ta nhân bản chủ yếu để làm brand cùng ngành
+        khác sản phẩm. Chép luôn sản phẩm cũ sang thì bài viết sẽ nói về hàng
+        của brand khác, mà reviewer lại coi knowledge_base là nguồn sự thật
+        nên sẽ không bắt được lỗi đó.
+
+        KHÔNG chép _sources/: tài liệu gốc thuộc về brand cũ.
+        """
+        source_dir = self._brand_dir(source_id)
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Brand nguồn '{source_id}' không tồn tại")
+
+        target_dir = self._brand_dir(new_id)
+        if target_dir.exists() and any(target_dir.iterdir()):
+            raise BrandExistsError(f"Thư mục brand '{new_id}' đã tồn tại và không rỗng")
+
+        bo_qua = {"_sources"} | (set() if include_products else {"products"})
+
+        for src in source_dir.rglob("*"):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(source_dir)
+            if rel.parts and rel.parts[0] in bo_qua:
+                continue
+            if rel.name == "brand.json":
+                continue  # dựng lại bên dưới, không chép nguyên
+
+            dest = target_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
+        # Thư mục rỗng vẫn phải có để UI thêm tài liệu vào được
+        for sub in ("products", "audience"):
+            (target_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        source_meta = self._load_brand_meta(source_id) or {}
+        meta = {
+            "id": new_id,
+            "name": name,
+            "description": description,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "color": color,
+            "icon": icon,
+            # Những ràng buộc này thường theo ngành nên chép sang là đúng
+            "default_channels": source_meta.get("default_channels", ["facebook", "instagram"]),
+            "default_goal": source_meta.get("default_goal", "awareness"),
+            "forbidden_claims": list(source_meta.get("forbidden_claims", [])),
+            "mandatory_terms": list(source_meta.get("mandatory_terms", [])),
+            "cloned_from": source_id,
+        }
+        self._save_brand_meta(new_id, meta)
+
+        # voice_profile.json mang profile_id của brand cũ, phải đổi
+        voice_path = target_dir / "voice_profile.json"
+        if voice_path.exists():
+            try:
+                profile = json.loads(voice_path.read_text(encoding="utf-8"))
+                profile["profile_id"] = new_id
+                voice_path.write_text(
+                    json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+            except (OSError, ValueError) as e:
+                logger.warning("Không sửa được profile_id khi nhân bản: %s", e)
+
+        return meta
+
     def delete_brand(self, brand_id: str) -> bool:
         """Delete a brand and all its knowledge."""
         brand_dir = self._brand_dir(brand_id)
@@ -247,6 +382,43 @@ class BrandManager:
             file_path.unlink()
             return True
         return False
+
+    # === Tài liệu gốc người dùng đã nạp ===
+
+    def save_source(self, brand_id: str, name: str, text: str) -> str:
+        """
+        Lưu nguyên văn tài liệu người dùng dán vào, để sau này đọc lại được
+        bằng prompt tốt hơn mà không phải đi tìm lại bài cũ.
+
+        Ghi dưới dạng .txt trong _sources/ nên:
+          - retriever KHÔNG nạp (nó chỉ đọc tên file cố định + products/,
+            audience/, policies/ dạng .md)
+          - get_brand() không liệt kê ra tab Tài liệu (rglob "*.md")
+        Tức là tài liệu gốc không lẫn vào knowledge, chỉ nằm đó để tra lại.
+        """
+        validate_id(name, "source_name")
+        base_dir = safe_join(self._brand_dir(brand_id), "_sources")
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Nạp liệu nhiều lần thì tên sẽ đụng nhau. Trùng tên mà TRÙNG luôn nội
+        # dung thì bỏ qua (nạp lại đúng bài cũ, không cần bản sao); khác nội
+        # dung thì đánh số để không đè mất tài liệu lần trước.
+        path = base_dir / f"{name}.txt"
+        stt = 1
+        while path.exists():
+            if path.read_text(encoding="utf-8") == text:
+                return f"_sources/{path.name}"
+            stt += 1
+            path = base_dir / f"{name}_{stt}.txt"
+
+        path.write_text(text, encoding="utf-8")
+        return f"_sources/{path.name}"
+
+    def list_sources(self, brand_id: str) -> list[str]:
+        sources_dir = self._brand_dir(brand_id) / "_sources"
+        if not sources_dir.exists():
+            return []
+        return sorted(f.name for f in sources_dir.glob("*.txt"))
 
     # === Voice Profile ===
 
@@ -353,33 +525,10 @@ class BrandManager:
 
     @staticmethod
     def _real_content_length(path: Path) -> int:
-        """
-        Độ dài phần nội dung THẬT của một file markdown.
-
-        create_brand() sinh file mẫu đầy placeholder kiểu "(Thêm brand identity
-        tại đây)" — riêng phần khung đó đã dài hơn 50 ký tự, nên phép đo cũ
-        (len(file) > 50) chấm brand rỗng hoàn toàn là đã hoàn thành 50%.
-        Điểm hoàn thiện mà nói dối thì tệ hơn là không có.
-
-        Nên bỏ tiêu đề, dòng placeholder trong ngoặc đơn, và ghi chú nghiêng.
-        """
+        """Bản đọc-từ-đĩa của real_content_length()."""
         if not path.exists():
             return 0
-
-        real = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            body = line.lstrip("-*").strip()
-            # "(Sứ mệnh)", "- (Giá trị 1)", "_(chưa có trong tài liệu)_"
-            if body.startswith("(") and body.endswith(")"):
-                continue
-            if body.startswith("_(") and body.endswith(")_"):
-                continue
-            real.append(body)
-
-        return len(" ".join(real))
+        return real_content_length(path.read_text(encoding="utf-8"))
 
     def _calc_completeness(self, brand_dir: Path) -> dict:
         """Calculate knowledge completeness (4 dimensions × 25%)."""

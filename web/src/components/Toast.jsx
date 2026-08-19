@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, AlertCircle, Info } from 'lucide-react';
 
@@ -6,11 +6,19 @@ const ICONS = { success: Check, error: AlertCircle, info: Info };
 
 export function useToast() {
   const [toast, setToast] = useState(null);
+  const timer = useRef(null);
 
-  const show = (message, type = 'error') => {
+  /* showToast PHẢI ổn định giữa các lần render.
+     Nhiều trang đưa nó vào deps của useCallback/useEffect; nếu nó đổi mỗi
+     render thì effect chạy lại mỗi render — thành vòng lặp gọi API vô hạn. */
+  const show = useCallback((message, type = 'error') => {
+    clearTimeout(timer.current);
     setToast({ message, type, id: Date.now() });
-    setTimeout(() => setToast(null), 5000);
-  };
+    timer.current = setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  // Rời trang khi toast còn hiện thì phải dọn timer
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   const Toast = () => {
     const accent =
