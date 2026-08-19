@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -45,9 +45,7 @@ export default function BrandsPage() {
   const [loading, setLoading] = useState(true);
   const [newBrand, setNewBrand] = useState({ id: '', name: '', description: '', icon: '📦', color: '#2f3e86' });
 
-  useEffect(() => { loadBrands(); }, []);
-
-  const loadBrands = async () => {
+  const loadBrands = useCallback(async () => {
     try {
       const { data } = await brandsAPI.list();
       setBrands(data);
@@ -56,7 +54,9 @@ export default function BrandsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
+
+  useEffect(() => { loadBrands(); }, [loadBrands]);
 
   const createBrand = async () => {
     if (!newBrand.id || !newBrand.name) return;

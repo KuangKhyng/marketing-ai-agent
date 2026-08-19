@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { brandsAPI } from '../api/client';
 import { ArrowLeft, Plus, Trash2, Loader2 } from 'lucide-react';
@@ -58,11 +58,7 @@ export default function BrandDetailPage() {
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { loadBrand(); }, [brandId]);
-  useEffect(() => { if (tab === 'voice') loadVoice(); }, [tab]);
-  useEffect(() => { if (tab === 'preview') loadPreview(); }, [tab]);
-
-  const loadBrand = async () => {
+  const loadBrand = useCallback(async () => {
     try {
       const { data } = await brandsAPI.get(brandId);
       setBrand(data);
@@ -73,17 +69,23 @@ export default function BrandDetailPage() {
       });
     } catch { navigate('/knowledge'); }
     finally { setLoading(false); }
-  };
+  }, [brandId, navigate]);
 
-  const loadVoice = async () => {
+  const loadVoice = useCallback(async () => {
     try { const { data } = await brandsAPI.getVoice(brandId); setVoiceProfile(data); }
     catch { setVoiceProfile(null); }
-  };
+  }, [brandId]);
 
-  const loadPreview = async () => {
+  const loadPreview = useCallback(async () => {
     try { const { data } = await brandsAPI.preview(brandId); setPreview(data); }
     catch { setPreview(null); }
-  };
+  }, [brandId]);
+
+  // Đặt sau phần khai báo loader: mảng deps được tính lúc render nên tham
+  // chiếu tới const chưa khởi tạo sẽ ném ReferenceError.
+  useEffect(() => { loadBrand(); }, [loadBrand]);
+  useEffect(() => { if (tab === 'voice') loadVoice(); }, [tab, loadVoice]);
+  useEffect(() => { if (tab === 'preview') loadPreview(); }, [tab, loadPreview]);
 
   const saveVoice = async () => {
     setBusy(true);
