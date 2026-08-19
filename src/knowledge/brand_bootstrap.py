@@ -38,12 +38,19 @@ logger = logging.getLogger(__name__)
 # Giới hạn tổng độ dài input. Chặn cả chi phí lẫn việc nhồi quá context.
 MAX_INPUT_CHARS = 60_000
 
-# Retriever chỉ nạp tối đa 2 file product và 1 file audience
-# (src/knowledge/retriever.py::_smart_load_dir), chọn bằng keyword scoring chỉ
-# quét 500 ký tự đầu. Sinh nhiều hơn thì file thừa bị bỏ âm thầm — nên gom ít
-# file mà đầy đủ, đừng rải mỗi sản phẩm một file.
-MAX_PRODUCT_FILES = 2
-MAX_AUDIENCE_FILES = 1
+# Trần cho một file knowledge được ghi vào volume.
+#
+# MAX_INPUT_CHARS ở trên chỉ chặn thứ GỬI CHO LLM. Nội dung ghi xuống lại đến
+# từ client (bản draft người dùng sửa được), nên nếu không chặn thì đường ghi
+# không có giới hạn nào cả — dán 100MB là volume nhận 100MB.
+#
+# 200k ký tự đã là rất rộng cho một file markdown brand: cả knowledge_base của
+# brand mẫu hiện chưa tới 53KB.
+MAX_FILE_CHARS = 200_000
+
+# Trần cho tài liệu gốc lưu ở _sources/ — chỉ để tra lại nên không cần nới hơn
+# mức LLM đọc được.
+MAX_SOURCE_CHARS = MAX_INPUT_CHARS
 
 
 # === Schema LLM trả về ===
@@ -394,6 +401,31 @@ def _save_sources(manager: BrandManager, brand_id: str, sources: Optional[dict])
     return written
 
 
+class WriteTooLargeError(ValueError):
+    """Nội dung ghi vượt trần. Route layer map thành HTTP 413."""
+
+
+def check_write_size(files: list["FileDraft"], sources: Optional[dict] = None) -> None:
+    """
+    Chặn ghi file quá lớn vào volume.
+
+    Đường đọc đã có check_input_size(), nhưng nội dung GHI đến từ client chứ
+    không phải từ LLM, nên phải chặn riêng.
+    """
+    for f in files or []:
+        if len(f.content) > MAX_FILE_CHARS:
+            raise WriteTooLargeError(
+                f"File '{f.path}' dài {len(f.content):,} ký tự, tối đa "
+                f"{MAX_FILE_CHARS:,}."
+            )
+
+    tong = sum(len(t) for t in (sources or {}).values())
+    if tong > MAX_SOURCE_CHARS:
+        raise WriteTooLargeError(
+            f"Tài liệu gốc dài {tong:,} ký tự, tối đa {MAX_SOURCE_CHARS:,}."
+        )
+
+
 def apply_draft(
     manager: BrandManager,
     brand_id: str,
@@ -409,6 +441,8 @@ def apply_draft(
     có trong danh sách. Mọi đường dẫn đi qua BrandManager nên vẫn được
     validate_id + safe_join chặn path traversal.
     """
+    check_write_size(files, sources)
+
     written = []
     for f in files:
         manager.save_document(brand_id, f.path, f.content)
@@ -863,6 +897,10 @@ def create_brand_from_draft(
     từ tab Nạp liệu — bản draft nằm ở trình duyệt nên không phải trả tiền đọc
     lại lần nữa. Vì thế ở đây KHÔNG xoá brand khi lỗi: xoá đi mới là mất.
     """
+    # Kiểm TRƯỚC khi tạo brand: lỗi kích thước mà đã tạo thư mục rồi thì để
+    # lại một brand rỗng chẳng ai muốn.
+    check_write_size(draft_files, sources)
+
     manager.create_brand(brand_id, name, description, color=color, icon=icon)
 
     if voice_profile:
