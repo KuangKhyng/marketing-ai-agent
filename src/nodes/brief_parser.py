@@ -7,6 +7,7 @@ Brief Parser Node
 
 Uses Claude API with tool_use / structured output to force correct CampaignBrief schema.
 """
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from src.utils.trace import update_trace
 from src.utils.callbacks import TokenUsageHandler, estimate_tokens
 from src.knowledge.brand_manager import BrandManager
 
+
+logger = logging.getLogger(__name__)
 
 # Load prompt template
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "brief_parser.md"
@@ -145,6 +148,23 @@ def _call_claude_for_brief(
     return result
 
 
+def _clear_brand(brief: CampaignBrief, name: str = "", voice_profile_id: str = "default") -> None:
+    """
+    Bỏ mọi thông tin brand mà LLM trả về.
+
+    Quan trọng nhất là forbidden_claims và mandatory_terms: reviewer dùng chúng
+    làm QUY TẮC CỨNG (_run_rule_checks), chiều nào vi phạm là trượt bất kể điểm.
+    Một mandatory_terms do LLM bịa sẽ làm MỌI bài trượt vì thiếu một từ chẳng ai
+    yêu cầu; một forbidden_claims bịa sẽ cấm điều chẳng ai cấm.
+
+    Nên: không xác nhận được từ kho brand thì phải xoá, không được để lại.
+    """
+    brief.brand.name = name
+    brief.brand.voice_profile_id = voice_profile_id
+    brief.brand.forbidden_claims = []
+    brief.brand.mandatory_terms = []
+
+
 def _override_brand_from_state(brief: CampaignBrief, state: dict) -> CampaignBrief:
     """
     Override brand fields based on what user selected in UI.
@@ -168,18 +188,16 @@ def _override_brand_from_state(brief: CampaignBrief, state: dict) -> CampaignBri
                 brief.brand.forbidden_claims = brand_data.get("forbidden_claims", [])
                 brief.brand.mandatory_terms = brand_data.get("mandatory_terms", [])
             else:
-                # Brand metadata not found — fallback to generic
-                brief.brand.name = ""
-                brief.brand.voice_profile_id = "default"
+                # Brand không tra được — coi như generic
+                _clear_brand(brief, voice_profile_id="default")
         except Exception:
-            # If brand_manager fails, keep whatever LLM returned but clear name
-            brief.brand.name = brand_id
-            brief.brand.voice_profile_id = brand_id
+            logger.warning(
+                "Không đọc được kho brand cho '%s' — bỏ mọi thông tin brand do LLM trả về",
+                brand_id,
+            )
+            _clear_brand(brief, name=brand_id, voice_profile_id=brand_id)
     else:
         # Generic mode — FORCE empty brand, override anything LLM bịa
-        brief.brand.name = ""
-        brief.brand.voice_profile_id = "default"
-        brief.brand.forbidden_claims = []
-        brief.brand.mandatory_terms = []
+        _clear_brand(brief, voice_profile_id="default")
 
     return brief
