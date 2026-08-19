@@ -172,18 +172,65 @@ def _build_markdown(content, brief, review_result, trace) -> str:
             lines.append(f"")
             lines.append(f"---")
 
-    # Review scores
+    # Phần chấm chất lượng.
+    #
+    # Phải nói đủ như UI: người cầm file này không nhìn thấy màn hình, nên giấu
+    # bớt ở đây là để họ bàn giao nhầm.
     if review_result:
+        chua_kiem = getattr(review_result, "review_unavailable", False)
+
         lines.append(f"")
         lines.append(f"## Review Scores")
         lines.append(f"")
+
+        if chua_kiem:
+            lines.append("> ⚠️ **CHƯA KIỂM ĐƯỢC.** Phần chấm gặp lỗi nên nội dung này chưa")
+            lines.append("> qua kiểm tra nào — khác hẳn với \"đã kiểm và không đạt\".")
+            lines.append("> Cần người đọc lại toàn bộ trước khi dùng.")
+            lines.append(f"")
+
         lines.append(f"| Dimension | Score | Passed |")
         lines.append(f"|-----------|-------|--------|")
         for score in review_result.dimension_scores:
             status = "✅" if score.passed else "❌"
             lines.append(f"| {score.dimension.value} | {score.score:.2f} | {status} |")
         lines.append(f"")
-        lines.append(f"**Overall:** {'✅ PASSED' if review_result.overall_passed else '❌ FAILED'}")
+
+        if chua_kiem:
+            overall = "⚠️ CHƯA KIỂM ĐƯỢC"
+        elif review_result.overall_passed:
+            overall = "✅ PASSED"
+        else:
+            overall = "❌ FAILED"
+        lines.append(f"**Overall:** {overall}")
+
+        # Vi phạm quy tắc cứng: dữ kiện kiểm được bằng code, và nó làm chiều
+        # tương ứng trượt bất kể điểm LLM. Không hiện ra thì người đọc file
+        # không hiểu vì sao trượt.
+        vi_pham = [
+            (score.dimension.value, v)
+            for score in review_result.dimension_scores
+            for v in (getattr(score, "rule_violations", None) or [])
+        ]
+        if vi_pham:
+            lines.append(f"")
+            lines.append(f"### Vi phạm quy tắc cứng")
+            lines.append(f"")
+            for dimension, v in vi_pham:
+                lines.append(f"- **{dimension}** — {v}")
+
+        if review_result.critical_issues:
+            lines.append(f"")
+            lines.append(f"### Vấn đề phát hiện được")
+            lines.append(f"")
+            for issue in review_result.critical_issues:
+                lines.append(f"- {issue}")
+
+        if review_result.revision_instructions:
+            lines.append(f"")
+            lines.append(f"### Gợi ý sửa")
+            lines.append(f"")
+            lines.append(review_result.revision_instructions)
 
     return "\n".join(lines)
 
