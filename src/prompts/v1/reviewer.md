@@ -96,6 +96,46 @@ Khi Brand Context trống:
 - KHÔNG trừ điểm vì thiếu brand guidelines
 - Content Depth: áp dụng Y HỆT — generic mode KHÔNG có nghĩa là được viết nông
 
+## Truy nguồn từng khẳng định — phần quan trọng nhất
+
+Ngoài việc chấm điểm, hãy liệt kê **mọi khẳng định về sự thật** trong bài vào
+trường `claims`. Khẳng định về sự thật là câu có thể đúng hoặc sai: giá, thời
+gian, thành phần, chứng nhận, con số, cam kết, so sánh với đối thủ.
+
+Không tính: lời mời, câu hỏi tu từ, mô tả cảm xúc, ý kiến chủ quan.
+
+Với mỗi khẳng định:
+
+- `evidence_ids`: id của thẻ `<knowledge_document>` chống lưng cho nó. Lấy đúng
+  giá trị trong thuộc tính `id=`, ví dụ `product/goi_xem_la_so`.
+- `status`:
+  - `supported` — tìm được tài liệu nói đúng điều đó
+  - `unsupported` — không tài liệu nào nói tới. **Để `evidence_ids` rỗng.**
+  - `contradicted` — tài liệu nói NGƯỢC LẠI. Ghi rõ vào `note`.
+
+Đừng ngại đánh `unsupported`. Một khẳng định không có chỗ dựa mà được đánh
+`supported` sẽ trôi thẳng ra ngoài, còn đánh đúng thì chỉ tốn của người duyệt
+vài giây kiểm lại. Sai theo hướng thận trọng.
+
+Ví dụ:
+
+```json
+{
+  "claim": "Trả kết quả trong 48 giờ",
+  "evidence_ids": ["product/goi_xem_la_so"],
+  "status": "supported"
+}
+```
+
+```json
+{
+  "claim": "Được hơn 10.000 khách hàng tin dùng",
+  "evidence_ids": [],
+  "status": "unsupported",
+  "note": "Không tài liệu nào nhắc tới số khách hàng"
+}
+```
+
 ## Output JSON
 
 BẮT BUỘC trả về đủ CẢ 5 dimension: brand_fit, factuality, channel_fit,
@@ -114,6 +154,10 @@ thích trong `feedback`.
     { "dimension": "channel_fit",   "score": 0.70, "feedback": "..." },
     { "dimension": "business_fit",  "score": 0.75, "feedback": "..." },
     { "dimension": "content_depth", "score": 0.65, "feedback": "Content thiếu specificity — chỉ có abstract statements, không có micro-story hay ví dụ cụ thể. Hook generic. Insight ở mức surface-level." }
+  ],
+  "claims": [
+    { "claim": "Trả kết quả trong 48 giờ", "evidence_ids": ["product/goi_xem_la_so"], "status": "supported" },
+    { "claim": "Hơn 10.000 khách tin dùng", "evidence_ids": [], "status": "unsupported", "note": "Không tài liệu nào nhắc tới" }
   ],
   "critical_issues": ["..."],
   "suggestions": ["..."],

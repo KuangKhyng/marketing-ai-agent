@@ -153,6 +153,50 @@ export default function FinalReviewPage({ campaignData, setCampaignData, setPhas
         </p>
       </section>
 
+      {/* Truy nguồn khẳng định. Điểm factuality trung bình không cho biết CÂU
+          NÀO phải kiểm lại, nên thực tế chẳng ai kiểm gì. */}
+      {result.claims?.length > 0 && (
+        <section className="mb-8">
+          <p className="t-label mb-2.5">
+            Truy nguồn khẳng định (
+            {result.claims.filter(c => c.status === 'supported').length}/{result.claims.length}{' '}
+            có chỗ dựa)
+          </p>
+          <div className="sheet divide-y divide-rule">
+            {result.claims.map((c, i) => {
+              const ok = c.status === 'supported';
+              const nguoc = c.status === 'contradicted';
+              return (
+                <div key={i} className="px-5 py-3.5">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <span className="text-[0.9375rem] min-w-0">{c.claim}</span>
+                    <span
+                      className={`tag shrink-0 ${ok ? 'tag-pass' : 'tag-fail'}`}
+                    >
+                      {ok ? 'Có chỗ dựa' : nguoc ? 'Tài liệu nói ngược' : 'Không có chỗ dựa'}
+                    </span>
+                  </div>
+                  {c.evidence_ids?.length > 0 && (
+                    <p className="font-data text-[0.75rem] text-ink-3 mt-1">
+                      {c.evidence_ids.join(' · ')}
+                    </p>
+                  )}
+                  {c.note && (
+                    <p className="text-[0.875rem] text-ink-2 mt-1 leading-relaxed">{c.note}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {result.claims.some(c => c.status !== 'supported') && (
+            <p className="mt-2 text-[0.8125rem] text-ink-3">
+              Những dòng không có chỗ dựa cần bạn kiểm lại trước khi đăng — hệ thống không tìm
+              thấy tài liệu nào trong kho brand nói điều đó.
+            </p>
+          )}
+        </section>
+      )}
+
       {result.critical_issues?.length > 0 && (
         <section className="mb-8">
           <p className="t-label mb-2.5">Vấn đề phát hiện được ({result.critical_issues.length})</p>

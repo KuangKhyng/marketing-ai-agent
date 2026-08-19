@@ -145,6 +145,34 @@ def kiem_khong_bia_khi_thieu_bang_chung(text: str, dau_hieu_bia: list[str]) -> C
     )
 
 
+def kiem_moi_khang_dinh_co_cho_dua(review_result) -> CheckResult:
+    """
+    Mọi khẳng định trong bài đều phải chỉ ra được tài liệu chống lưng.
+
+    Đây là phép kiểm khác hẳn về chất so với "factuality >= 0.9": nó nêu tên
+    từng câu không có chỗ dựa, nên người đọc báo cáo biết phải kiểm lại cái gì.
+    """
+    claims = list(getattr(review_result, "claims", None) or [])
+    if not claims:
+        return CheckResult(
+            name="claims_all_supported",
+            passed=True,
+            detail="bài không có khẳng định nào về sự thật",
+        )
+
+    treo = [c for c in claims if getattr(c.status, "value", c.status) != "supported"]
+    return CheckResult(
+        name="claims_all_supported",
+        passed=not treo,
+        detail=(
+            "không có chỗ dựa: " + "; ".join(c.claim[:50] for c in treo)
+            if treo
+            else f"{len(claims)}/{len(claims)} có chỗ dựa"
+        ),
+        meta={"total": len(claims), "unsupported": len(treo)},
+    )
+
+
 # === Chấm một case ===
 
 
@@ -162,9 +190,12 @@ def chay_kiem_retrieval(context_pack: dict, expect: dict) -> list[CheckResult]:
     return ket_qua
 
 
-def chay_kiem_noi_dung(text: str, expect: dict) -> list[CheckResult]:
+def chay_kiem_noi_dung(text: str, expect: dict, review_result=None) -> list[CheckResult]:
     ket_qua = []
     c = expect.get("content") or {}
+
+    if (expect.get("claims") or {}).get("all_supported") and review_result is not None:
+        ket_qua.append(kiem_moi_khang_dinh_co_cho_dua(review_result))
 
     if c.get("must_not_contain"):
         ket_qua.append(kiem_khong_chua(text, c["must_not_contain"]))

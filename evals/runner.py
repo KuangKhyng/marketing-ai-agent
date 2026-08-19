@@ -173,6 +173,10 @@ def chay_generation(case: dict) -> dict:
                 runner.phase_3_content()
                 if runner.state.get("error"):
                     return _that_bai(case, runner.state["error"])
+
+                # Chạy cả reviewer khi case cần truy nguồn khẳng định
+                if (case.get("expect", {}).get("claims") or {}).get("all_supported"):
+                    runner.phase_4_review()
             finally:
                 bm.BRANDS_DIR = bm_cu
         finally:
@@ -184,7 +188,9 @@ def chay_generation(case: dict) -> dict:
         for p in (content.pieces if content else [])
     )
 
-    ket_qua = checks.chay_kiem_noi_dung(text, case.get("expect", {}))
+    ket_qua = checks.chay_kiem_noi_dung(
+        text, case.get("expect", {}), runner.state.get("review_result")
+    )
     return {
         "id": case["id"],
         "tier": "generation",

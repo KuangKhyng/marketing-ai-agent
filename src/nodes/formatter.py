@@ -214,6 +214,28 @@ def _build_markdown(content, brief, review_result, trace) -> str:
             for dimension, v in vi_pham:
                 lines.append(f"- **{dimension}** — {v}")
 
+        # Truy nguồn từng khẳng định. Người cầm file cần biết CÂU NÀO phải
+        # kiểm lại, không phải một điểm factuality trung bình.
+        claims = getattr(review_result, "claims", None) or []
+        if claims:
+            khong_dua = [c for c in claims if c.status.value != "supported"]
+            lines.append(f"")
+            lines.append(f"### Truy nguồn khẳng định ({len(claims) - len(khong_dua)}/{len(claims)} có chỗ dựa)")
+            lines.append(f"")
+            lines.append(f"| Khẳng định | Trạng thái | Dựa trên |")
+            lines.append(f"|------------|-----------|----------|")
+            for c in claims:
+                nhan = {"supported": "✅ có chỗ dựa",
+                        "unsupported": "⚠️ KHÔNG có chỗ dựa",
+                        "contradicted": "❌ tài liệu nói ngược"}.get(c.status.value, c.status.value)
+                nguon = ", ".join(c.evidence_ids) if c.evidence_ids else "—"
+                # Dấu gạch đứng trong nội dung sẽ cắt đôi ô của bảng markdown
+                claim_txt = c.claim.replace("|", "\\|")
+                lines.append(f"| {claim_txt} | {nhan} | {nguon} |")
+            if khong_dua:
+                lines.append(f"")
+                lines.append(f"Những dòng không có chỗ dựa cần người kiểm lại trước khi đăng.")
+
         if review_result.critical_issues:
             lines.append(f"")
             lines.append(f"### Vấn đề phát hiện được")

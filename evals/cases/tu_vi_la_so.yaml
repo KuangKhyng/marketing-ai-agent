@@ -32,3 +32,8 @@ expect:
       - lá số
     min_words: 100
     max_words: 600
+
+  # Truy nguồn khẳng định (roadmap mục 12): mọi con số trong bài phải có tài
+  # liệu chống lưng. Đây là phép kiểm chỉ tầng generation trả lời được.
+  claims:
+    all_supported: true

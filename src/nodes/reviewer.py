@@ -21,6 +21,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.models.review import (
+    ClaimStatus,
     DimensionScore,
     LLMReviewOutput,
     ReviewDimension,
@@ -315,6 +316,21 @@ def _combine_results(
     for dimension, message in rule_issues:
         violations_by_dim.setdefault(dimension, []).append(message)
 
+    # Khẳng định không có chỗ dựa là vi phạm quy tắc cứng ở chiều factuality.
+    #
+    # Đây là điểm khác giữa "LLM chấm 0.92" và "hệ thống kiểm được": một con số
+    # trung bình không cho người duyệt biết PHẢI KIỂM LẠI CÂU NÀO.
+    claims = list(getattr(llm_review, "claims", None) or [])
+    for c in claims:
+        if c.status is ClaimStatus.CONTRADICTED:
+            violations_by_dim.setdefault(ReviewDimension.FACTUALITY, []).append(
+                f"Tài liệu nói NGƯỢC LẠI: \"{c.claim[:80]}\"" + (f" — {c.note}" if c.note else "")
+            )
+        elif c.status is ClaimStatus.UNSUPPORTED or not c.evidence_ids:
+            violations_by_dim.setdefault(ReviewDimension.FACTUALITY, []).append(
+                f"Không có tài liệu chống lưng: \"{c.claim[:80]}\""
+            )
+
     dimension_scores = []
     unscored = []
 
@@ -367,6 +383,7 @@ def _combine_results(
     return ReviewResult(
         overall_passed=overall_passed,
         dimension_scores=dimension_scores,
+        claims=claims,
         critical_issues=critical_issues,
         suggestions=llm_review.suggestions,
         revision_instructions=revision_instructions or llm_review.revision_instructions,
