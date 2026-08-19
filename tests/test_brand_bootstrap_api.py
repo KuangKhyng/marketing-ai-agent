@@ -216,3 +216,43 @@ def test_ten_source_sai_format_khong_lam_hong_thao_tac(client, monkeypatch):
     assert r.status_code == 200, "file knowledge vẫn phải được ghi"
     assert "content_framework.md" in r.json()["written"]
     assert not (brands / "ca_phe_abc" / "_sources").exists()
+
+
+# === F5: đường ghi cũng phải có trần ===
+
+
+def test_ghi_file_qua_lon_tra_413(client):
+    """
+    check_input_size chỉ chặn thứ GỬI CHO LLM. Nội dung ghi xuống đến từ client
+    (bản draft người dùng sửa được), nên phải chặn riêng — không thì volume
+    nhận bao nhiêu tuỳ người gửi.
+    """
+    c, brands = client
+    r = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": [{"path": "identity.md", "content": "x" * 300_000}]},
+    )
+
+    assert r.status_code == 413, r.text
+    assert "tối đa" in r.json()["detail"]["message"]
+    noi_dung = (brands / "ca_phe_abc" / "identity.md").read_text(encoding="utf-8")
+    assert "xxxx" not in noi_dung, "chặn rồi thì không được ghi gì"
+
+
+def test_tai_lieu_goc_qua_lon_tra_413(client):
+    c, _ = client
+    r = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": [], "sources": {"qua_dai": "x" * 70_000}},
+    )
+    assert r.status_code == 413
+
+
+def test_file_vua_phai_van_ghi_binh_thuong(client):
+    c, brands = client
+    r = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": [{"path": "identity.md", "content": "Nội dung hợp lệ " * 100}]},
+    )
+    assert r.status_code == 200
+    assert "Nội dung hợp lệ" in (brands / "ca_phe_abc" / "identity.md").read_text(encoding="utf-8")

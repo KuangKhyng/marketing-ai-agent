@@ -270,14 +270,17 @@ def bootstrap_apply(brand_id: str, req: ApplyDraftRequest):
             status_code=400, detail={"message": "Chưa chọn gì để lưu."}
         )
 
-    return brand_bootstrap.apply_draft(
-        manager,
-        brand_id,
-        req.files,
-        voice_profile=req.voice_profile,
-        brand_meta=req.brand_meta,
-        sources=req.sources,
-    )
+    try:
+        return brand_bootstrap.apply_draft(
+            manager,
+            brand_id,
+            req.files,
+            voice_profile=req.voice_profile,
+            brand_meta=req.brand_meta,
+            sources=req.sources,
+        )
+    except brand_bootstrap.WriteTooLargeError as e:
+        raise HTTPException(status_code=413, detail={"message": str(e)}) from e
 
 
 # === Tạo brand TỪ tài liệu ===
@@ -335,6 +338,8 @@ def bootstrap_create(req: CreateFromDraftRequest):
             icon=req.icon,
             color=req.color,
         )
+    except brand_bootstrap.WriteTooLargeError as e:
+        raise HTTPException(status_code=413, detail={"message": str(e)}) from e
     except BrandExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
 
