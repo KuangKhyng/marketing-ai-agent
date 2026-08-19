@@ -234,3 +234,29 @@ class TestGhiFile:
 
         assert out["current_node"] == "formatter"
         assert not outputs.exists(), "pipeline đã lỗi thì không được xuất bản gì"
+
+
+# === R6: node không được in nội dung ra stdout ===
+
+
+def test_khong_in_noi_dung_ra_stdout(outputs, capsys):
+    """
+    Web API dùng chung node này, mà log server đi stdout. In ra là đẩy nguyên
+    campaign chưa công bố của khách vào log nền tảng (Railway/container).
+    """
+    fm.formatter_node(a_state())
+
+    ra = capsys.readouterr()
+    assert "Sáng nay mẻ đầu" not in ra.out, "nội dung campaign lọt vào stdout"
+    assert "Ghé quán thử" not in ra.out
+
+
+def test_cli_van_in_duoc_khi_can(outputs, capsys):
+    """CLI vẫn phải xem được kết quả — chỉ là phải tự gọi."""
+    state = a_state()
+    fm.formatter_node(state)
+
+    fm.print_console_output(state)
+
+    ra = capsys.readouterr()
+    assert "Sáng nay mẻ đầu" in ra.out

@@ -37,7 +37,8 @@ class CampaignState(TypedDict):
     # Review
     review_result: Optional[ReviewResult]       # review scores and feedback
     revision_count: int                         # number of revision loops done
-    max_revisions: int                          # max allowed (default 2)
+    max_review_attempts: int                    # số lượt CHẤM tối đa (mặc định 2).
+                                            # 2 lượt chấm = 1 lượt sửa, xem edges.route_after_review
 
     # Trace
     trace: Optional[RunTrace]                   # full run trace
@@ -49,3 +50,6 @@ class CampaignState(TypedDict):
                                                 # (vd: 1 trong 3 kênh render thất bại)
     review_route: Optional[str]                 # kết quả route_after_review: passed/retry/max_retries.
                                                 # Graph đi theo nó ngay; nhánh web lưu lại để hỏi user.
+    current_phase: Optional[str]                # lượt chạy hiện tại (strategy/content/review/export)
+    attempt: int                                # đã chạy bao nhiêu lượt — lỗi không làm chết phiên
+    last_error: Optional[dict]                  # lỗi của lượt TRƯỚC, giữ để truy chứ không chặn lượt sau

@@ -68,3 +68,55 @@ class TestIsCacheable:
 
     def test_da_qua_vong_review_thi_khong_cache(self):
         assert is_cacheable({"review_result": object()}) is False
+
+
+# === R3: cache phải đổi khi knowledge / prompt / model đổi ===
+
+
+class TestVersionTheoHeThong:
+    """
+    Trước đây key chỉ gồm raw_input + brand + brief + strategy. Sửa
+    knowledge_base xong chạy lại đúng brief đó vẫn nhận content CŨ — người dùng
+    tin vào thứ đã lỗi thời, mà knowledge_base lại là nguồn sự thật.
+    """
+
+    def test_sua_knowledge_thi_doi_key(self, brief):
+        cu = {"product": "Không dùng cho phụ nữ mang thai", "policies": "P"}
+        moi = {"product": "Dùng được cho phụ nữ mang thai", "policies": "P"}
+
+        assert campaign_cache.content_key(RAW, "abc", brief, "S", cu) != \
+               campaign_cache.content_key(RAW, "abc", brief, "S", moi)
+
+    def test_sua_knowledge_thi_doi_ca_key_chien_luoc(self, brief):
+        cu = {"brand": "Quán cà phê rang mộc"}
+        moi = {"brand": "Quán cà phê rang mộc, mở thêm chi nhánh quận 3"}
+
+        assert campaign_cache.strategy_key(RAW, "abc", brief, cu) != \
+               campaign_cache.strategy_key(RAW, "abc", brief, moi)
+
+    def test_knowledge_giong_nhau_thi_giu_nguyen_key(self, brief):
+        ctx = {"product": "X", "policies": "Y"}
+        assert campaign_cache.content_key(RAW, "abc", brief, "S", ctx) == \
+               campaign_cache.content_key(RAW, "abc", brief, "S", dict(ctx))
+
+    def test_metadata_khong_lam_doi_key(self, brief):
+        """loaded_docs chỉ là ghi chép, không ảnh hưởng nội dung sinh ra."""
+        a = {"product": "X", "loaded_docs": ["product:mot"]}
+        b = {"product": "X", "loaded_docs": ["product:mot", "product:hai"]}
+        assert campaign_cache.content_key(RAW, "abc", brief, "S", a) == \
+               campaign_cache.content_key(RAW, "abc", brief, "S", b)
+
+    def test_sua_prompt_thi_doi_key(self, brief, tmp_path, monkeypatch):
+        import api.cache as cache_mod
+
+        truoc = campaign_cache.content_key(RAW, "abc", brief, "S", {"product": "X"})
+
+        gia = tmp_path / "prompt_gia.md"
+        gia.write_text("prompt đã sửa", encoding="utf-8")
+        monkeypatch.setattr(cache_mod, "_SYSTEM_FILES", [gia])
+        cache_mod._system_digest.cache_clear()
+
+        sau = campaign_cache.content_key(RAW, "abc", brief, "S", {"product": "X"})
+        cache_mod._system_digest.cache_clear()
+
+        assert truoc != sau, "sửa prompt mà kết quả cũ vẫn được dùng lại là sai"

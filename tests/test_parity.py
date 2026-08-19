@@ -143,7 +143,7 @@ def run_graph(monkeypatch, brief, master_message, review_outcomes):
         "brand_id": None,
         "human_approved": False,
         "revision_count": 0,
-        "max_revisions": 2,
+        "max_review_attempts": 2,
         "trace": RunTrace(),
         "current_node": "",
         "error": None,
@@ -217,9 +217,9 @@ class TestParity:
         """
         Trượt mãi thì cả hai đều dừng đúng chỗ và vẫn đi formatter.
 
-        Về con số: max_revisions=2 cho ĐÚNG MỘT lượt sửa, không phải hai.
+        Về con số: max_review_attempts=2 là số lượt CHẤM, cho đúng MỘT lượt sửa.
         reviewer tăng revision_count mỗi lần trượt, rồi route_after_review so
-        `revision_count < max_revisions`:
+        `revision_count < max_review_attempts`:
             reviewer #1 -> count 1, 1 < 2 -> retry
             reviewer #2 -> count 2, 2 < 2 sai -> max_retries -> formatter
         Tên biến hơi lệch nghĩa nhưng hai nhánh lệch nhau thì tệ hơn, nên test

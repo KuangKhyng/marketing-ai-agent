@@ -121,8 +121,12 @@ export default function ContentReviewPage({ campaignData, setCampaignData, setPh
               Đọc từng bài như bản thảo. Sửa tay được ngay, hoặc để hệ thống viết lại.
             </p>
           </div>
+          {/* Số lượt CHẤM đã dùng, không phải số lượt sửa: 2 lượt chấm cho
+              đúng 1 lượt sửa lại. Xem src/graph/edges.py::route_after_review. */}
           {campaignData?.revision_count > 0 && (
-            <span className="tag tag-warn shrink-0 num">Sửa lần {campaignData.revision_count}/2</span>
+            <span className="tag tag-warn shrink-0 num">
+              Đã chấm {campaignData.revision_count}/2 lượt
+            </span>
           )}
         </div>
       </header>

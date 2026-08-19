@@ -26,6 +26,7 @@ from rich.markdown import Markdown as RichMarkdown
 
 from src.graph.workflow import build_workflow
 from src.models.trace import RunTrace
+from src.nodes.formatter import print_console_output
 from src.utils.logging_config import setup_logging
 from langgraph.types import Command
 
@@ -197,6 +198,12 @@ def _print_run_summary(workflow, config):
     try:
         final_state = workflow.get_state(config)
         state_values = final_state.values
+
+        # In nội dung ra terminal. formatter_node cố tình KHÔNG tự in nữa: web
+        # API dùng chung node đó và log server đi stdout, in ra là đẩy campaign
+        # của khách vào log nền tảng.
+        if state_values.get("campaign_content") and state_values.get("brief"):
+            print_console_output(state_values)
 
         revision_count = state_values.get("revision_count", 0)
         if revision_count > 0:

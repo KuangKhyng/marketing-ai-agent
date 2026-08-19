@@ -73,7 +73,7 @@ def review_state(brief, content, master_message):
         "context_pack": {"voice_profile": {}, "product": "", "policies": ""},
         "master_message": master_message,
         "revision_count": 0,
-        "max_revisions": 2,
+        "max_review_attempts": 2,
         "trace": RunTrace(),
         "warnings": [],
     }
