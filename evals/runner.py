@@ -261,15 +261,26 @@ def so_voi_moc(ket_qua: list[dict], baseline_path: Path) -> bool:
         if not cu:
             print(f"  {r['id']}: case mới")
             continue
-        if cu["passed"] > r["passed"]:
-            hoi_quy.append(r["id"])
-            print(f"  {r['id']}: TỤT {cu['passed']} -> {r['passed']}")
-        elif cu["passed"] < r["passed"]:
-            print(f"  {r['id']}: tốt lên {cu['passed']} -> {r['passed']}")
+        # So theo TỪNG phép kiểm, không chỉ theo tổng số đạt: đổi một phép
+        # kiểm đỏ thành xanh rồi làm hỏng một phép khác thì tổng vẫn y nguyên.
+        cu_dat = {c["name"] for c in cu.get("checks", []) if c["passed"]}
+        moi_dat = {c["name"] for c in r.get("checks", []) if c["passed"]}
+        mat = sorted(cu_dat - moi_dat)
 
-    mat_case = set(moc) - {r["id"] for r in ket_qua}
+        if mat:
+            hoi_quy.append(r["id"])
+            print(f"  {r['id']}: TỤT ở {', '.join(mat)}")
+        elif moi_dat - cu_dat:
+            print(f"  {r['id']}: tốt lên ở {', '.join(sorted(moi_dat - cu_dat))}")
+
+    # Case biến mất khỏi lần chạy cũng là hồi quy.
+    #
+    # Xoá một case đang đỏ là cách dễ nhất để làm cổng chuyển xanh mà không sửa
+    # gì. Cổng nào cho phép làm thế thì không phải cổng.
+    mat_case = sorted(set(moc) - {r["id"] for r in ket_qua})
     if mat_case:
-        print(f"  Case biến mất khỏi lần chạy này: {', '.join(sorted(mat_case))}")
+        hoi_quy.extend(mat_case)
+        print(f"  MẤT case so với mốc: {', '.join(mat_case)}")
 
     if hoi_quy:
         print(f"\nHỒI QUY ở {len(hoi_quy)} case: {', '.join(hoi_quy)}")

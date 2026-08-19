@@ -108,6 +108,9 @@ Với mỗi khẳng định:
 
 - `evidence_ids`: id của thẻ `<knowledge_document>` chống lưng cho nó. Lấy đúng
   giá trị trong thuộc tính `id=`, ví dụ `product/goi_xem_la_so`.
+  **Chỉ được dùng id có thật trong phần dữ liệu bên dưới.** Bịa ra một id không
+  tồn tại còn tệ hơn để rỗng: hệ thống sẽ đối chiếu, phát hiện, và tự hạ khẳng
+  định đó xuống `unsupported` — nhưng người đọc đã mất công tin nó một lúc.
 - `status`:
   - `supported` — tìm được tài liệu nói đúng điều đó
   - `unsupported` — không tài liệu nào nói tới. **Để `evidence_ids` rỗng.**

@@ -143,7 +143,19 @@ def atomic_write_many(items: "list[tuple[Path, bytes]]") -> list[Path]:
                 pass
         raise
 
-    for tam, path in tam_list:
-        os.replace(tam, path)
+    # Giai đoạn 2. Rename hỏng giữa chừng thì những file tạm CHƯA commit phải
+    # được dọn, nếu không chúng nằm lại trong thư mục brand vĩnh viễn. Phần đã
+    # commit thì để nguyên — đó là trạng thái hỗn hợp mà docstring đã nói rõ là
+    # giới hạn của cách làm này.
+    for i, (tam, path) in enumerate(tam_list):
+        try:
+            os.replace(tam, path)
+        except BaseException:
+            for tam_thua, _ in tam_list[i:]:
+                try:
+                    os.unlink(tam_thua)
+                except OSError:
+                    pass
+            raise
 
     return [path for _, path in tam_list]

@@ -155,3 +155,33 @@ class TestApplyDraft:
 
         sau = json.loads((brands / "ca_phe_abc" / "brand.json").read_text(encoding="utf-8"))
         assert sau["updated_at"] >= truoc["updated_at"]
+
+
+def test_hong_giua_vong_rename_khong_de_lai_file_tam(tmp_path, monkeypatch):
+    """
+    Giai đoạn 2 hỏng ở file thứ hai: file đầu đã commit (trạng thái hỗn hợp,
+    đúng như docstring nói là giới hạn), nhưng file tạm còn lại PHẢI được dọn —
+    không thì chúng nằm lại trong thư mục brand vĩnh viễn.
+    """
+    import src.utils.paths as paths_mod
+
+    that = paths_mod.os.replace
+    dem = {"n": 0}
+
+    def replace_hong(src, dst):
+        dem["n"] += 1
+        if dem["n"] == 2:
+            raise OSError("đĩa lỗi")
+        return that(src, dst)
+
+    monkeypatch.setattr(paths_mod.os, "replace", replace_hong)
+
+    with pytest.raises(OSError):
+        atomic_write_many([
+            (tmp_path / "a.md", b"A"),
+            (tmp_path / "b.md", b"B"),
+            (tmp_path / "c.md", b"C"),
+        ])
+
+    con_lai = sorted(f.name for f in tmp_path.iterdir())
+    assert con_lai == ["a.md"], f"file tạm còn sót: {con_lai}"

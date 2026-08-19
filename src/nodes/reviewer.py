@@ -14,6 +14,7 @@ Scores content on 5 dimensions:
 """
 import json
 import logging
+from typing import Optional
 from datetime import datetime
 from pathlib import Path
 
@@ -93,7 +94,9 @@ def reviewer_node(state: dict) -> dict:
         llm_review = _run_llm_review(content, brief, context_pack, master_message, config, node_trace)
 
         # Step 3: Combine results
-        review_result = _combine_results(rule_issues, llm_review)
+        review_result = _combine_results(
+            rule_issues, llm_review, set(context_pack.get("document_ids") or [])
+        )
 
         node_trace.output_summary = (
             f"Review: {'PASSED' if review_result.overall_passed else 'FAILED'}, "
@@ -291,9 +294,40 @@ def _run_llm_review(
     return result
 
 
+def _xac_thuc_claim(claims: list, id_hop_le: set[str]) -> list:
+    """
+    Hạ những khẳng định trích dẫn tài liệu không tồn tại xuống UNSUPPORTED.
+
+    `id_hop_le` là id của những tài liệu THẬT SỰ đã được nạp vào context —
+    chính là thuộc tính id trên thẻ <knowledge_document> mà LLM nhìn thấy. Trích
+    dẫn ngoài danh sách đó nghĩa là LLM tự bịa ra nguồn, và đó là kiểu sai nguy
+    hiểm nhất: nó trông y như một khẳng định đã được kiểm chứng.
+
+    Không có id hợp lệ nào (context rỗng) thì bỏ qua bước này, vì lúc đó không
+    có gì để đối chiếu.
+    """
+    if not id_hop_le:
+        return claims
+
+    for c in claims:
+        khong_co = [e for e in (c.evidence_ids or []) if e not in id_hop_le]
+        if not khong_co:
+            continue
+
+        c.evidence_ids = [e for e in c.evidence_ids if e in id_hop_le]
+        ghi_chu = "trích dẫn tài liệu không tồn tại: " + ", ".join(khong_co)
+        c.note = f"{c.note} | {ghi_chu}" if c.note else ghi_chu
+
+        if not c.evidence_ids and c.status is not ClaimStatus.CONTRADICTED:
+            c.status = ClaimStatus.UNSUPPORTED
+
+    return claims
+
+
 def _combine_results(
     rule_issues: list[tuple[ReviewDimension, str]],
     llm_review: LLMReviewOutput,
+    document_ids: Optional[set[str]] = None,
 ) -> ReviewResult:
     """
     Ghép rule check với điểm của LLM thành kết luận cuối.
@@ -320,7 +354,9 @@ def _combine_results(
     #
     # Đây là điểm khác giữa "LLM chấm 0.92" và "hệ thống kiểm được": một con số
     # trung bình không cho người duyệt biết PHẢI KIỂM LẠI CÂU NÀO.
-    claims = list(getattr(llm_review, "claims", None) or [])
+    claims = _xac_thuc_claim(
+        list(getattr(llm_review, "claims", None) or []), document_ids or set()
+    )
     for c in claims:
         if c.status is ClaimStatus.CONTRADICTED:
             violations_by_dim.setdefault(ReviewDimension.FACTUALITY, []).append(

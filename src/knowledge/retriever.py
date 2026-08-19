@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from functools import lru_cache
 from hashlib import md5
@@ -87,6 +88,10 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
         "mode": "branded" if brand_id else "generic",
         "brand_name": "",
         "loaded_docs": [],
+        # id CHUẨN của mọi tài liệu đã nạp, đúng bằng thuộc tính id của thẻ
+        # <knowledge_document>. Reviewer đối chiếu evidence_ids với danh sách
+        # này — trích dẫn tài liệu không tồn tại thì không tính là bằng chứng.
+        "document_ids": [],
         # Có tra được tài liệu thật không. False = LLM phải kiêng nói cụ thể.
         "product_evidence": False,
         "audience_evidence": False,
@@ -107,10 +112,10 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
     policies_dir = GLOBAL_DIR / "policies"
     if policies_dir.exists():
         for f in policies_dir.glob("*.md"):
-            policies_parts.append(
-                wrap_untrusted(f"policy/global/{f.stem}", "policy", _read_file(f))
-            )
+            doc_id = f"policy/global/{f.stem}"
+            policies_parts.append(wrap_untrusted(doc_id, "policy", _read_file(f)))
             context["loaded_docs"].append(f"global_policy:{f.stem}")
+            context["document_ids"].append(doc_id)
 
     # === BRAND-SPECIFIC MODE ===
     if brand_id:
@@ -144,41 +149,45 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
                 brand_parts.append(_read_file(filepath))
                 brand_names.append(filename)
                 context["loaded_docs"].append(f"brand:{filename.replace('.md', '')}")
+                context["document_ids"].append(f"brand/{filename}")
         context["brand"] = "\n\n".join(
             wrap_untrusted(f"brand/{ten}", "brand", noi_dung)
             for ten, noi_dung in zip(brand_names, brand_parts)
         )
 
         # Products — SMART load: only matching files
-        product_content, p_docs = _smart_load_dir(
+        san_pham = _smart_load_dir(
             brand_dir / "products",
             query=f"{brief.offer.product_or_service} {brief.offer.key_message}",
             max_files=2,
+            doc_type="product",
         )
+        # Mỗi tài liệu MỘT thẻ. Gộp lại rồi bọc chung thì khẳng định không truy
+        # được về đúng file — mà đó là toàn bộ mục đích của claim provenance.
         context["product"] = (
-            "\n\n".join(
-                wrap_untrusted(f"product/{ten}", "product", product_content)
-                for ten in [", ".join(p_docs) or "unknown"]
-            )
-            if product_content
+            "\n\n".join(wrap_untrusted(d.doc_id, "product", d.content) for d in san_pham)
+            if san_pham
             else KHONG_CO_BANG_CHUNG_SAN_PHAM
         )
-        context["product_evidence"] = bool(p_docs)
-        context["loaded_docs"].extend([f"product:{d}" for d in p_docs])
+        context["product_evidence"] = bool(san_pham)
+        context["loaded_docs"].extend(f"product:{d.doc_id.split('/')[-1]}" for d in san_pham)
+        context["document_ids"].extend(d.doc_id for d in san_pham)
 
         # Audience — SMART load: only matching files
-        audience_content, a_docs = _smart_load_dir(
+        khach = _smart_load_dir(
             brand_dir / "audience",
             query=brief.audience.persona_description,
             max_files=1,
+            doc_type="audience",
         )
         context["audience"] = (
-            wrap_untrusted(f"audience/{', '.join(a_docs)}", "audience", audience_content)
-            if audience_content
+            "\n\n".join(wrap_untrusted(d.doc_id, "audience", d.content) for d in khach)
+            if khach
             else KHONG_CO_BANG_CHUNG_KHACH
         )
-        context["audience_evidence"] = bool(a_docs)
-        context["loaded_docs"].extend([f"audience:{d}" for d in a_docs])
+        context["audience_evidence"] = bool(khach)
+        context["loaded_docs"].extend(f"audience:{d.doc_id.split('/')[-1]}" for d in khach)
+        context["document_ids"].extend(d.doc_id for d in khach)
 
         # Voice profile
         voice_path = brand_dir / "voice_profile.json"
@@ -192,10 +201,10 @@ def build_context_pack(brief: CampaignBrief, brand_id: str = None) -> dict:
         brand_policies_dir = brand_dir / "policies"
         if brand_policies_dir.exists():
             for f in brand_policies_dir.glob("*.md"):
-                policies_parts.append(
-                    wrap_untrusted(f"policy/{brand_id}/{f.stem}", "policy", _read_file(f))
-                )
+                doc_id = f"policy/{brand_id}/{f.stem}"
+                policies_parts.append(wrap_untrusted(doc_id, "policy", _read_file(f)))
                 context["loaded_docs"].append(f"brand_policy:{f.stem}")
+                context["document_ids"].append(doc_id)
 
         # Brand metadata (forbidden claims, mandatory terms)
         # Chỉ lấy tên brand. forbidden_claims / mandatory_terms KHÔNG đi qua
@@ -234,83 +243,6 @@ def _get_generic_voice_profile() -> dict:
         ],
     }
 
-def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[str, list[str]]:
-    """
-    Nạp tài liệu khớp với yêu cầu.
-
-    KHÔNG có fallback lấy bừa. Không khớp thì trả rỗng, và người gọi sẽ ghi
-    lời nhắc "không có bằng chứng" vào context. Đưa nhầm tài liệu vào còn tệ
-    hơn không đưa gì: LLM sẽ coi nó là sự thật, và reviewer chấm factuality
-    dựa trên chính tài liệu sai đó nên không bắt được.
-
-    Returns:
-        (nội dung, tên file đã nạp). Rỗng nghĩa là không có bằng chứng.
-    """
-    if not directory.exists():
-        return "", []
-
-    files = [f for f in directory.glob("*.md") if not f.stem.startswith("_")]
-    if not files:
-        return "", []
-
-    keywords = _extract_keywords(query)
-    if not keywords:
-        logger.info(
-            "%s: yêu cầu không có từ khoá nào dùng được — không nạp tài liệu nào",
-            directory.name,
-        )
-        return "", []
-
-    scored = []
-    for filepath in files:
-        content = _read_file(filepath).lower()
-        ten_tokens = _tokens_ten_file(filepath.stem)
-
-        score = 0
-        khop = set()
-        for kw in keywords:
-            # Tên file là slug ASCII nên phải bỏ dấu hai bên, và so theo TỪ
-            # thay vì chuỗi con để "la" không khớp bừa vào "la_so".
-            if _bo_dau(kw).lower() in ten_tokens:
-                score += 3          # khớp tên file = tín hiệu mạnh
-                khop.add(kw)
-            if kw in content:       # quét TOÀN VĂN, không chỉ 500 ký tự đầu
-                score += 1
-                khop.add(kw)
-        scored.append((filepath, score, len(khop)))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-
-    # Ngưỡng đếm theo SỐ TỪ KHOÁ KHÁC NHAU, không theo điểm.
-    #
-    # Điểm dễ đánh lừa: một từ chung chung khớp tên file đã được +3, đủ vượt
-    # mọi ngưỡng đặt theo điểm. Eval bắt đúng chuyện này — brief về "tư vấn
-    # phong thuỷ, xem hướng bếp" nạp nhầm "goi_xem_la_so.md" chỉ vì chữ "xem".
-    #
-    # Hai từ khoá khác nhau là mức thấp nhất còn có nghĩa. Không đủ thì coi như
-    # không có bằng chứng — người gọi sẽ dặn LLM đừng bịa.
-    relevant = [f for f, sc, so_kw in scored if so_kw >= TOI_THIEU_TU_KHOA_KHOP]
-
-    if not relevant:
-        logger.warning(
-            "%s: không tài liệu nào khớp '%s' — không nạp gì, LLM sẽ được dặn không bịa",
-            directory.name, query[:60],
-        )
-        return "", []
-
-    matches = relevant[:max_files]
-    if len(relevant) > max_files:
-        # Retrieval ở đây là keyword scoring, không phải vector search. File bị
-        # cắt bỏ vẫn có thể liên quan — log để biết context đang thiếu gì.
-        logger.info(
-            "%s: có %d file khớp nhưng chỉ nạp %d — bỏ %s",
-            directory.name, len(relevant), max_files,
-            ", ".join(f.name for f in relevant[max_files:]),
-        )
-
-    return "\n\n---\n\n".join(_read_file(f) for f in matches), [f.stem for f in matches]
-
-
 def _bo_dau(text: str) -> str:
     """Bỏ dấu tiếng Việt. đ/Đ phải xử riêng vì NFD không tách được."""
     text = text.replace("đ", "d").replace("Đ", "D")
@@ -321,6 +253,88 @@ def _bo_dau(text: str) -> str:
 def _tokens_ten_file(stem: str) -> set[str]:
     """Tên file thành tập từ, đã bỏ dấu — để so với từ khoá cũng đã bỏ dấu."""
     return set(re.split(r"[^a-z0-9]+", _bo_dau(stem).lower())) - {""}
+
+
+@dataclass
+class TaiLieu:
+    """
+    Một tài liệu đã được nạp.
+
+    doc_id là id CHUẨN dùng ở hai chỗ: thuộc tính id của thẻ
+    <knowledge_document>, và evidence_ids mà reviewer trích dẫn. Hai chỗ đó phải
+    khớp nhau thì truy nguồn mới có nghĩa.
+    """
+
+    doc_id: str
+    content: str
+    score: int
+
+
+def _smart_load_dir(
+    directory: Path, query: str, max_files: int = 2, doc_type: str = "doc"
+) -> list[TaiLieu]:
+    """
+    Nạp tài liệu khớp với yêu cầu, trả về TỪNG tài liệu một.
+
+    Trả list thay vì một chuỗi đã gộp: người gọi cần bọc mỗi tài liệu một thẻ
+    riêng để claim còn truy được về đúng file.
+
+    KHÔNG có fallback lấy bừa. Không khớp thì trả rỗng, và người gọi sẽ ghi lời
+    nhắc "không có bằng chứng" vào context. Đưa nhầm tài liệu vào còn tệ hơn
+    không đưa gì: LLM sẽ coi nó là sự thật, và reviewer chấm factuality dựa
+    trên chính tài liệu sai đó nên không bắt được.
+    """
+    if not directory.exists():
+        return []
+
+    files = [f for f in directory.glob("*.md") if not f.stem.startswith("_")]
+    if not files:
+        return []
+
+    keywords = _extract_keywords(query)
+    if not keywords:
+        logger.info(
+            "%s: yêu cầu không có từ khoá nào dùng được — không nạp tài liệu nào",
+            directory.name,
+        )
+        return []
+
+    scored = []
+    for filepath in files:
+        content = _read_file(filepath)
+        ten_tokens = _tokens_ten_file(filepath.stem)
+        thap = content.lower()
+
+        score = 0
+        khop = set()
+        for kw in keywords:
+            # Tên file là slug ASCII nên phải bỏ dấu hai bên, và so theo TỪ
+            # thay vì chuỗi con để "la" không khớp bừa vào "la_so".
+            if _bo_dau(kw).lower() in ten_tokens:
+                score += 3          # khớp tên file = tín hiệu mạnh
+                khop.add(kw)
+            if kw in thap:          # quét TOÀN VĂN, không chỉ 500 ký tự đầu
+                score += 1
+                khop.add(kw)
+
+        if len(khop) >= TOI_THIEU_TU_KHOA_KHOP:
+            scored.append(TaiLieu(f"{doc_type}/{filepath.stem}", content, score))
+
+    if not scored:
+        logger.warning(
+            "%s: không tài liệu nào khớp '%s' — không nạp gì, LLM sẽ được dặn không bịa",
+            directory.name, query[:60],
+        )
+        return []
+
+    scored.sort(key=lambda d: d.score, reverse=True)
+    if len(scored) > max_files:
+        logger.info(
+            "%s: có %d tài liệu khớp nhưng chỉ nạp %d — bỏ %s",
+            directory.name, len(scored), max_files,
+            ", ".join(d.doc_id for d in scored[max_files:]),
+        )
+    return scored[:max_files]
 
 
 def _extract_keywords(text: str) -> list[str]:
