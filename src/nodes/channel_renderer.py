@@ -17,6 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import anthropic
 
+from src.knowledge.untrusted import UNTRUSTED_DATA_NOTICE
 from src.models.brief import Channel, Deliverable
 from src.models.content import ContentPiece, CampaignContent
 from src.models.trace import NodeTrace
@@ -42,7 +43,8 @@ def _load_channel_prompt(channel: str) -> str:
     """Load channel-specific prompt template."""
     prompt_path = PROMPTS_DIR / f"channel_renderer_{channel}.md"
     if prompt_path.exists():
-        return prompt_path.read_text(encoding="utf-8")
+        # Knowledge đi thẳng vào prompt này — xem src/knowledge/untrusted.py
+        return prompt_path.read_text(encoding="utf-8") + UNTRUSTED_DATA_NOTICE
     raise FileNotFoundError(f"No prompt template for channel: {channel}")
 
 

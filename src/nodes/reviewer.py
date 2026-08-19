@@ -26,6 +26,7 @@ from src.models.review import (
     ReviewDimension,
     ReviewResult,
 )
+from src.knowledge.untrusted import UNTRUSTED_DATA_NOTICE
 from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config, get_platform_specs
 from src.utils.trace import update_trace
@@ -46,7 +47,8 @@ THRESHOLDS = {
 
 
 def _load_prompt() -> str:
-    return PROMPT_PATH.read_text(encoding="utf-8")
+    # Knowledge đi thẳng vào prompt này — xem src/knowledge/untrusted.py
+    return PROMPT_PATH.read_text(encoding="utf-8") + UNTRUSTED_DATA_NOTICE
 
 
 def reviewer_node(state: dict) -> dict:

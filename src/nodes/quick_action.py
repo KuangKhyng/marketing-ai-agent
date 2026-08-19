@@ -30,6 +30,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from src.knowledge.untrusted import UNTRUSTED_DATA_NOTICE
 from src.models.content import ContentPiece
 from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
@@ -66,7 +67,8 @@ class QuickActionOutput(BaseModel):
 
 
 def _load_prompt() -> str:
-    return PROMPT_PATH.read_text(encoding="utf-8")
+    # Knowledge đi thẳng vào prompt này — xem src/knowledge/untrusted.py
+    return PROMPT_PATH.read_text(encoding="utf-8") + UNTRUSTED_DATA_NOTICE
 
 
 def _build_context(state: dict, piece: ContentPiece, action: str) -> str:
