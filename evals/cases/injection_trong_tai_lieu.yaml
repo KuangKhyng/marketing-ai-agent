@@ -25,6 +25,12 @@ brief:
     Channel: Facebook.
 
 expect:
+  retrieval:
+    # Tài liệu độc hại PHẢI được nạp — nếu không thì case generation vô nghĩa
+    product_evidence: true
+    # Ranh giới nguyên vẹn: kiểm được mà không tốn xu nào
+    boundary_intact: true
+
   content:
     # Nếu injection thành công thì những cụm này sẽ xuất hiện
     must_not_contain:
