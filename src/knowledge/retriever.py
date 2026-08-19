@@ -17,6 +17,7 @@ Supports two modes:
 import json
 import logging
 import re
+import unicodedata
 from pathlib import Path
 from functools import lru_cache
 from hashlib import md5
@@ -41,6 +42,10 @@ KHONG_CO_BANG_CHUNG_KHACH = (
     "Chỉ dựa vào mô tả đối tượng trong brief, không bịa thêm hành vi, thu nhập "
     "hay trăn trở mà không có căn cứ."
 )
+
+# Cần ít nhất bấy nhiêu TỪ KHOÁ KHÁC NHAU khớp thì mới coi một tài liệu là
+# bằng chứng. Xem _smart_load_dir để biết vì sao đếm từ khoá chứ không đếm điểm.
+TOI_THIEU_TU_KHOA_KHOP = 2
 
 KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge_base"
 BRANDS_DIR = KNOWLEDGE_DIR / "brands"
@@ -259,18 +264,32 @@ def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[st
     scored = []
     for filepath in files:
         content = _read_file(filepath).lower()
-        filename = filepath.stem.replace("_", " ").lower()
+        ten_tokens = _tokens_ten_file(filepath.stem)
 
         score = 0
+        khop = set()
         for kw in keywords:
-            if kw in filename:
+            # Tên file là slug ASCII nên phải bỏ dấu hai bên, và so theo TỪ
+            # thay vì chuỗi con để "la" không khớp bừa vào "la_so".
+            if _bo_dau(kw).lower() in ten_tokens:
                 score += 3          # khớp tên file = tín hiệu mạnh
+                khop.add(kw)
             if kw in content:       # quét TOÀN VĂN, không chỉ 500 ký tự đầu
                 score += 1
-        scored.append((filepath, score))
+                khop.add(kw)
+        scored.append((filepath, score, len(khop)))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    relevant = [f for f, sc in scored if sc > 0]
+
+    # Ngưỡng đếm theo SỐ TỪ KHOÁ KHÁC NHAU, không theo điểm.
+    #
+    # Điểm dễ đánh lừa: một từ chung chung khớp tên file đã được +3, đủ vượt
+    # mọi ngưỡng đặt theo điểm. Eval bắt đúng chuyện này — brief về "tư vấn
+    # phong thuỷ, xem hướng bếp" nạp nhầm "goi_xem_la_so.md" chỉ vì chữ "xem".
+    #
+    # Hai từ khoá khác nhau là mức thấp nhất còn có nghĩa. Không đủ thì coi như
+    # không có bằng chứng — người gọi sẽ dặn LLM đừng bịa.
+    relevant = [f for f, sc, so_kw in scored if so_kw >= TOI_THIEU_TU_KHOA_KHOP]
 
     if not relevant:
         logger.warning(
@@ -290,6 +309,18 @@ def _smart_load_dir(directory: Path, query: str, max_files: int = 2) -> tuple[st
         )
 
     return "\n\n---\n\n".join(_read_file(f) for f in matches), [f.stem for f in matches]
+
+
+def _bo_dau(text: str) -> str:
+    """Bỏ dấu tiếng Việt. đ/Đ phải xử riêng vì NFD không tách được."""
+    text = text.replace("đ", "d").replace("Đ", "D")
+    text = unicodedata.normalize("NFD", text)
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def _tokens_ten_file(stem: str) -> set[str]:
+    """Tên file thành tập từ, đã bỏ dấu — để so với từ khoá cũng đã bỏ dấu."""
+    return set(re.split(r"[^a-z0-9]+", _bo_dau(stem).lower())) - {""}
 
 
 def _extract_keywords(text: str) -> list[str]:

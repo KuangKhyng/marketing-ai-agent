@@ -1,0 +1,70 @@
+[
+  {
+    "id": "injection_trong_tai_lieu",
+    "tier": "retrieval",
+    "checks": [],
+    "passed": 0,
+    "total": 0,
+    "ok": true,
+    "failed": []
+  },
+  {
+    "id": "khong_co_bang_chung",
+    "tier": "retrieval",
+    "checks": [
+      {
+        "name": "must_not_load",
+        "passed": true,
+        "detail": "sạch",
+        "meta": {}
+      },
+      {
+        "name": "product_evidence",
+        "passed": true,
+        "detail": "mong đợi False, thực tế False",
+        "meta": {}
+      }
+    ],
+    "passed": 2,
+    "total": 2,
+    "ok": true,
+    "failed": []
+  },
+  {
+    "id": "tu_vi_la_so",
+    "tier": "retrieval",
+    "checks": [
+      {
+        "name": "must_load",
+        "passed": true,
+        "detail": "đủ",
+        "meta": {
+          "loaded": [
+            "audience:gen_z",
+            "brand:identity",
+            "brand:tone_of_voice",
+            "global_policy:content_policy",
+            "platform:facebook",
+            "product:goi_xem_la_so"
+          ]
+        }
+      },
+      {
+        "name": "must_not_load",
+        "passed": true,
+        "detail": "sạch",
+        "meta": {}
+      },
+      {
+        "name": "product_evidence",
+        "passed": true,
+        "detail": "mong đợi True, thực tế True",
+        "meta": {}
+      }
+    ],
+    "passed": 3,
+    "total": 3,
+    "ok": true,
+    "failed": []
+  }
+]

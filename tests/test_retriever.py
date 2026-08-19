@@ -284,3 +284,69 @@ class TestTuKhoa:
 
     def test_chuoi_rong(self, kb):
         assert rt._extract_keywords("") == []
+
+
+# === Ngưỡng bằng chứng: một từ chung chung là chưa đủ ===
+
+
+class TestNguongBangChung:
+    def test_mot_tu_khoa_khop_ten_file_la_chua_du(self, kb):
+        """
+        Eval bắt được lỗ này: brief về "tư vấn phong thuỷ, xem hướng bếp" nạp
+        nhầm "goi_xem_la_so.md" chỉ vì chữ "xem" khớp tên file (+3 điểm).
+
+        Ngưỡng đặt theo ĐIỂM luôn bị đánh lừa kiểu đó, nên đếm số TỪ KHOÁ KHÁC
+        NHAU khớp được.
+        """
+        a_brand(kb, **{
+            "products__goi_xem_la_so.md": "Luận giải lá số tử vi cá nhân, trả trong 48 giờ",
+            "products__khoa_hoc_tarot.md": "Khoá học Tarot cơ bản",
+        })
+        ctx = rt.build_context_pack(
+            a_brief(product="tư vấn phong thuỷ nhà ở và xem hướng bếp"),
+            brand_id="ca_phe_abc",
+        )
+
+        assert ctx["product_evidence"] is False
+        assert "48 giờ" not in ctx["product"], "một chữ 'xem' không phải là bằng chứng"
+
+    def test_nhieu_tu_khoa_khop_thi_du(self, kb):
+        a_brand(kb, **{
+            "products__goi_xem_la_so.md": "Luận giải lá số tử vi cá nhân, trả trong 48 giờ",
+        })
+        ctx = rt.build_context_pack(
+            a_brief(product="luận giải lá số tử vi"), brand_id="ca_phe_abc"
+        )
+
+        assert ctx["product_evidence"] is True
+        assert "48 giờ" in ctx["product"]
+
+    def test_ten_file_khong_dau_van_khop_tu_khoa_co_dau(self, kb):
+        """
+        Bootstrap sinh tên file bằng slug bỏ dấu, người dùng gõ tiếng Việt có
+        dấu. Không bỏ dấu khi so thì khớp tên file gần như không bao giờ xảy ra.
+        """
+        a_brand(kb, **{
+            "products__ca_phe_rang_moc.md": "Hạt Arabica Cầu Đất",
+            "products__tra_sua.md": "Trà sữa trân châu",
+        })
+        ctx = rt.build_context_pack(a_brief(product="cà phê rang mộc"), brand_id="ca_phe_abc")
+
+        assert "Arabica" in ctx["product"]
+        assert "trân châu" not in ctx["product"]
+
+    def test_khong_bo_dau_khi_so_noi_dung(self, kb):
+        """
+        Bỏ dấu ở nội dung thì mất quá nhiều thông tin: "tư vấn" và "tử vi" đều
+        thành "tu v...", nên brief về tư vấn sẽ khớp nhầm tài liệu tử vi.
+        """
+        a_brand(kb, **{
+            "products__mot.md": "Dịch vụ tử vi trọn gói",
+            "products__hai.md": "Khoá học nấu ăn",
+        })
+        ctx = rt.build_context_pack(
+            a_brief(product="tư vấn tài chính cá nhân"), brand_id="ca_phe_abc"
+        )
+
+        assert "tử vi" not in ctx["product"]
+        assert ctx["product_evidence"] is False

@@ -1,0 +1,11 @@
+{
+  "id": "tu_vi_demo",
+  "name": "Tử Vi Online Demo",
+  "description": "Brand dùng cho eval — KHÔNG phải dữ liệu thật",
+  "color": "#6c5ce7",
+  "icon": "✦",
+  "default_channels": ["facebook"],
+  "default_goal": "awareness",
+  "forbidden_claims": ["cải mệnh đổi vận", "đảm bảo chính xác 100%"],
+  "mandatory_terms": []
+}
