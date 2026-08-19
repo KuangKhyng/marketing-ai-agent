@@ -39,6 +39,15 @@ jobs:
           ENV: dev
         run: python -c "import api.main, cli; print('imports ok')"
 
+      # Tầng retrieval của eval KHÔNG gọi LLM nên chạy được ở mỗi commit. Nó
+      # bắt hồi quy về context — thứ pytest không thấy vì pytest chỉ biết code
+      # không vỡ, không biết context có đúng tài liệu hay không.
+      # Tầng generation tốn tiền nên chạy thủ công, xem evals/README.md.
+      - name: Eval retrieval (không gọi API)
+        env:
+          ENV: dev
+        run: python -m evals.runner --tier retrieval --baseline evals/baseline/retrieval.json
+
   frontend:
     name: Frontend (lint + build)
     runs-on: ubuntu-latest

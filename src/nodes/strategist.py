@@ -13,6 +13,7 @@ from pathlib import Path
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from src.knowledge.untrusted import UNTRUSTED_DATA_NOTICE
 from src.models.trace import NodeTrace
 from src.config.settings import get_api_key, get_model_config
 from src.utils.trace import update_trace
@@ -22,7 +23,8 @@ PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "v1" / "strat
 
 
 def _load_prompt() -> str:
-    return PROMPT_PATH.read_text(encoding="utf-8")
+    # Knowledge đi thẳng vào prompt này — xem src/knowledge/untrusted.py
+    return PROMPT_PATH.read_text(encoding="utf-8") + UNTRUSTED_DATA_NOTICE
 
 
 def strategist_node(state: dict) -> dict:

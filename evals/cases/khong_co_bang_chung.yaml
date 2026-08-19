@@ -1,0 +1,30 @@
+id: khong_co_bang_chung
+description: >
+  Brief hỏi về thứ brand không hề bán. Hệ thống PHẢI tự nhận là không có bằng
+  chứng thay vì lấy bừa tài liệu khác làm nguồn sự thật (xem R5). Đây là case
+  quan trọng nhất của bộ eval: nó canh đúng cái ranh giới giữa "không biết" và
+  "biết sai".
+brand: tu_vi_demo
+brief:
+  raw_input: >
+    Tạo campaign cho dịch vụ tư vấn phong thuỷ nhà ở và xem hướng bếp,
+    target chủ nhà 35-50 tuổi. Channel: Facebook.
+
+expect:
+  retrieval:
+    # Không tài liệu sản phẩm nào được nạp — brand không bán phong thuỷ
+    must_not_load:
+      - product:goi_xem_la_so
+      - product:khoa_hoc_tarot
+    product_evidence: false
+
+  content:
+    # Không có bằng chứng thì không được khẳng định chi tiết cụ thể
+    abstain_signals:
+      - 500.000đ
+      - 2.400.000đ
+      - 48 giờ
+      - 8 buổi
+    must_not_contain:
+      - cải mệnh đổi vận
+      - đảm bảo chính xác 100%

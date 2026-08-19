@@ -4,7 +4,9 @@ Path safety helpers — chống path traversal ở mọi chỗ nhận id/path t�
 Nguyên tắc: KHÔNG BAO GIỜ ghép trực tiếp input của user vào Path.
 Mọi id đi qua validate_id(), mọi path tương đối đi qua safe_join().
 """
+import os
 import re
+import tempfile
 from pathlib import Path
 
 # id an toàn: chữ, số, gạch ngang, gạch dưới — đủ cho brand_id, run_id, template_id
@@ -59,3 +61,89 @@ def safe_join(base: Path, *parts: str) -> Path:
         raise InvalidPathError("Đường dẫn nằm ngoài thư mục cho phép")
 
     return resolved
+
+
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    """
+    Ghi file sao cho không bao giờ tồn tại trạng thái nửa vời.
+
+    `path.write_text()` mở file, cắt về rỗng, rồi ghi dần. Crash hoặc hết dung
+    lượng ở giữa để lại một file cụt — mà đây là knowledge base và session
+    state, tức là nguồn sự thật của pipeline.
+
+    Cách làm: ghi ra file tạm cùng thư mục (cùng filesystem nên rename mới
+    atomic), fsync để dữ liệu thật sự xuống đĩa, rồi os.replace — thao tác này
+    atomic ở cả POSIX lẫn Windows. Người đọc song song hoặc thấy bản cũ nguyên
+    vẹn, hoặc thấy bản mới nguyên vẹn, không bao giờ thấy nửa chừng.
+    """
+    _atomic_write(path, text.encode(encoding))
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Bản nhị phân của atomic_write_text — dùng cho pickle."""
+    _atomic_write(path, data)
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # File tạm phải nằm CÙNG thư mục: os.replace chỉ atomic trong cùng
+    # filesystem, mà /tmp thường là filesystem khác với volume.
+    fd, tam = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tam, path)
+    except BaseException:
+        # Dọn file tạm; nếu replace đã xong thì tam không còn tồn tại
+        try:
+            os.unlink(tam)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_many(items: "list[tuple[Path, bytes]]") -> list[Path]:
+    """
+    Ghi nhiều file với MỘT điểm cam kết chung.
+
+    Giai đoạn 1 — ghi và fsync tất cả ra file tạm. Tốn thời gian, nhưng chưa ai
+    nhìn thấy gì, và hết dung lượng ở đây thì không file thật nào bị đụng.
+    Giai đoạn 2 — rename lần lượt. Mỗi rename atomic và gần như tức thời.
+
+    KHÔNG phải transaction thật: crash đúng giữa vòng rename vẫn để lại hỗn hợp
+    mới/cũ. Nhưng cửa sổ rủi ro co từ "toàn bộ thời gian ghi và gọi mạng" xuống
+    "vài microgiây", và không bao giờ tồn tại file cụt.
+
+    Muốn tất-cả-hoặc-không-gì thật sự thì phải đổi sang DB có transaction —
+    đó là việc của tầng persistence, không phải của filesystem.
+    """
+    if not items:
+        return []
+
+    tam_list: list[tuple[str, Path]] = []
+    try:
+        for path, data in items:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tam = tempfile.mkstemp(
+                dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+            )
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            tam_list.append((tam, path))
+    except BaseException:
+        for tam, _ in tam_list:
+            try:
+                os.unlink(tam)
+            except OSError:
+                pass
+        raise
+
+    for tam, path in tam_list:
+        os.replace(tam, path)
+
+    return [path for _, path in tam_list]

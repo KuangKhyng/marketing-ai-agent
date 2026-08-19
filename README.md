@@ -120,9 +120,22 @@ gì. `tests/test_dependency_consistency.py` kiểm luôn điều này.
 
 ```bash
 pip install -e ".[dev]"
-pytest                              # không gọi Anthropic API, chạy offline
+pytest                                 # không gọi Anthropic API, chạy offline
 python scripts/smoke_real_api.py all   # gọi API THẬT, có tốn tiền
 ```
+
+### Eval — đo chất lượng, không phải đo "code không vỡ"
+
+`pytest` trả lời *"có gì vỡ không"*. Nó không trả lời được *"prompt mới có tốt
+hơn prompt cũ không"*. Đó là việc của `evals/`.
+
+```bash
+python -m evals.runner --tier retrieval    # miễn phí, chạy trong CI mỗi commit
+python -m evals.runner --tier generation   # gọi API thật, hỏi giá trước khi chạy
+```
+
+Case là **dữ liệu** (`evals/cases/*.yaml`), thêm một file là xong. Chi tiết ở
+[evals/README.md](evals/README.md).
 
 ## 🧱 Dựng brand từ tài liệu
 

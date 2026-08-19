@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import atomic_write_bytes, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ class CampaignCache:
     ) -> None:
         try:
             key = self.strategy_key(raw_input, brand_id, brief, context_pack)
-            (self._dir(key) / "strategy.txt").write_text(strategy, encoding="utf-8")
+            atomic_write_text(self._dir(key) / "strategy.txt", strategy)
         except OSError as e:
             logger.warning("Không ghi được strategy cache: %s", e)
 
@@ -231,11 +232,12 @@ class CampaignCache:
     ) -> None:
         try:
             key = self.content_key(raw_input, brand_id, brief, strategy, context_pack)
-            with open(self._dir(key) / "content.pkl", "wb") as f:
-                pickle.dump(
-                    {"master_message": master_message, "campaign_content": campaign_content},
-                    f,
-                )
+            atomic_write_bytes(
+                self._dir(key) / "content.pkl",
+                pickle.dumps(
+                    {"master_message": master_message, "campaign_content": campaign_content}
+                ),
+            )
         except Exception as e:
             logger.warning("Không ghi được content cache: %s", e)
 
