@@ -397,10 +397,22 @@ class BrandManager:
         Tức là tài liệu gốc không lẫn vào knowledge, chỉ nằm đó để tra lại.
         """
         validate_id(name, "source_name")
-        path = safe_join(self._brand_dir(brand_id), "_sources", f"{name}.txt")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        base_dir = safe_join(self._brand_dir(brand_id), "_sources")
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Nạp liệu nhiều lần thì tên sẽ đụng nhau. Trùng tên mà TRÙNG luôn nội
+        # dung thì bỏ qua (nạp lại đúng bài cũ, không cần bản sao); khác nội
+        # dung thì đánh số để không đè mất tài liệu lần trước.
+        path = base_dir / f"{name}.txt"
+        stt = 1
+        while path.exists():
+            if path.read_text(encoding="utf-8") == text:
+                return f"_sources/{path.name}"
+            stt += 1
+            path = base_dir / f"{name}_{stt}.txt"
+
         path.write_text(text, encoding="utf-8")
-        return f"_sources/{name}.txt"
+        return f"_sources/{path.name}"
 
     def list_sources(self, brand_id: str) -> list[str]:
         sources_dir = self._brand_dir(brand_id) / "_sources"

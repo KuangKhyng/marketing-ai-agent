@@ -24,6 +24,7 @@ Pipeline flow:
 """
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.types import interrupt, Command
 
 from src.graph.state import CampaignState
@@ -66,6 +67,44 @@ def human_approval_node(state: dict) -> dict:
         "human_approved": approved,
         "current_node": "human_approval",
     }
+
+
+# Những kiểu được phép khôi phục từ checkpoint.
+#
+# Mặc định LangGraph cho khôi phục MỌI kiểu và chỉ log cảnh báo
+# ("Deserializing unregistered type ... will be blocked in a future version"),
+# tức là hôm nay ồn, mai vỡ. Khai báo tường minh vừa hết cảnh báo vừa siết đúng
+# chỗ nên siết: checkpoint bị ghi bậy thì khôi phục kiểu tuỳ ý là đường dẫn tới
+# thực thi mã.
+#
+# LƯU Ý khi thêm model mới vào CampaignState: kiểu THIẾU trong danh sách này
+# KHÔNG báo lỗi — nó bị hạ xuống thành dict, rồi vỡ ở chỗ khác rất khó truy.
+# tests/test_checkpoint_types.py canh đúng chuyện đó.
+_ALLOWED_CHECKPOINT_TYPES = [
+    ("src.models.trace", "RunTrace"),
+    ("src.models.trace", "NodeTrace"),
+    ("src.models.brief", "CampaignBrief"),
+    ("src.models.brief", "BrandSpec"),
+    ("src.models.brief", "AudienceSpec"),
+    ("src.models.brief", "OfferSpec"),
+    ("src.models.brief", "ContentConstraints"),
+    ("src.models.brief", "SuccessCriteria"),
+    ("src.models.brief", "CampaignGoal"),
+    ("src.models.brief", "AwarenessStage"),
+    ("src.models.brief", "Channel"),
+    ("src.models.brief", "Deliverable"),
+    ("src.models.message", "MasterMessage"),
+    ("src.models.content", "CampaignContent"),
+    ("src.models.content", "ContentPiece"),
+    ("src.models.review", "ReviewResult"),
+    ("src.models.review", "DimensionScore"),
+    ("src.models.review", "ReviewDimension"),
+]
+
+
+def _build_serializer():
+    """Serializer chỉ khôi phục đúng những kiểu của pipeline này."""
+    return JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_CHECKPOINT_TYPES)
 
 
 def build_workflow():
@@ -120,5 +159,4 @@ def build_workflow():
     graph.add_edge("formatter", END)
 
     # Compile with memory checkpointer (required for interrupt)
-    memory = MemorySaver()
-    return graph.compile(checkpointer=memory)
+    return graph.compile(checkpointer=MemorySaver(serde=_build_serializer()))

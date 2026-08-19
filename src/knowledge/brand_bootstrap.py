@@ -378,12 +378,29 @@ def build_brand_draft(
 # === Ghi draft xuống ===
 
 
+def _save_sources(manager: BrandManager, brand_id: str, sources: Optional[dict]) -> list[str]:
+    """
+    Giữ nguyên văn tài liệu người dùng đã dán.
+
+    Lỗi ở đây không được kéo theo cả thao tác: đây là tiện ích để sau đọc lại,
+    không phải phần bắt buộc của việc ghi knowledge.
+    """
+    written = []
+    for name, text in (sources or {}).items():
+        try:
+            written.append(manager.save_source(brand_id, name, text))
+        except Exception as e:
+            logger.warning("Không lưu được tài liệu gốc %s: %s", name, e)
+    return written
+
+
 def apply_draft(
     manager: BrandManager,
     brand_id: str,
     files: list[FileDraft],
     voice_profile: Optional[dict] = None,
     brand_meta: Optional[dict] = None,
+    sources: Optional[dict[str, str]] = None,
 ) -> dict:
     """
     Ghi những gì người dùng đã duyệt.
@@ -404,6 +421,8 @@ def apply_draft(
     if brand_meta:
         manager.update_brand_meta(brand_id, brand_meta)
         written.append("brand.json")
+
+    written.extend(_save_sources(manager, brand_id, sources))
 
     logger.info("Bootstrap brand %s: ghi %s", brand_id, ", ".join(written))
     return {"written": written}
@@ -853,13 +872,7 @@ def create_brand_from_draft(
         manager, brand_id, draft_files, voice_profile=voice_profile, brand_meta=brand_meta
     )
 
-    for source_name, text in (sources or {}).items():
-        try:
-            result["written"].append(manager.save_source(brand_id, source_name, text))
-        except Exception as e:
-            # Lưu tài liệu gốc là tiện ích, hỏng thì không được kéo theo cả brand
-            logger.warning("Không lưu được tài liệu gốc %s: %s", source_name, e)
-
+    result["written"].extend(_save_sources(manager, brand_id, sources))
     result["brand_id"] = brand_id
     logger.info("Tạo brand %s từ tài liệu: %s", brand_id, ", ".join(result["written"]))
     return result

@@ -138,3 +138,81 @@ def test_path_traversal_qua_apply_bi_chan(client):
     )
     assert r.status_code == 400, r.text
     assert "outputs" not in r.text.lower()
+
+
+# === Tài liệu gốc cũng phải được giữ ở luồng nạp thêm ===
+
+
+def test_apply_luu_tai_lieu_goc(client, monkeypatch):
+    """
+    Lý do giữ _sources ("sau đọc lại bằng prompt tốt hơn") áp dụng cho cả nạp
+    thêm, không riêng lúc tạo brand.
+    """
+    c, brands = client
+    monkeypatch.setattr(
+        bb, "extract_voice", lambda samples: (a_voice(), bb.ExtractUsage(cost_estimate=0.02))
+    )
+
+    draft = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/voice", json={"samples": ["bài"]}
+    ).json()
+
+    r = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": draft["files"], "sources": {"bai_dang_1": "nguyên văn bài cũ"}},
+    )
+    assert r.status_code == 200, r.text
+    assert "_sources/bai_dang_1.txt" in r.json()["written"]
+
+    sources = brands / "ca_phe_abc" / "_sources"
+    assert (sources / "bai_dang_1.txt").read_text(encoding="utf-8") == "nguyên văn bài cũ"
+
+
+def test_nap_lai_cung_bai_khong_tao_ban_sao(client):
+    """Nạp đúng bài cũ lần nữa thì không cần thêm file rác."""
+    c, brands = client
+    for _ in range(3):
+        c.post(
+            "/api/brands/ca_phe_abc/bootstrap/apply",
+            json={"files": [], "sources": {"bai_dang_1": "y hệt nhau"}},
+        )
+
+    files = sorted(f.name for f in (brands / "ca_phe_abc" / "_sources").glob("*.txt"))
+    assert files == ["bai_dang_1.txt"]
+
+
+def test_trung_ten_khac_noi_dung_thi_danh_so(client, brands_dir=None):
+    """Không được đè mất tài liệu lần trước."""
+    c, brands = client
+    c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": [], "sources": {"bai_dang_1": "bài đợt một"}},
+    )
+    c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": [], "sources": {"bai_dang_1": "bài đợt hai"}},
+    )
+
+    sources = brands / "ca_phe_abc" / "_sources"
+    assert (sources / "bai_dang_1.txt").read_text(encoding="utf-8") == "bài đợt một"
+    assert (sources / "bai_dang_1_2.txt").read_text(encoding="utf-8") == "bài đợt hai"
+
+
+def test_ten_source_sai_format_khong_lam_hong_thao_tac(client, monkeypatch):
+    """Lưu tài liệu gốc là tiện ích — hỏng thì không được kéo theo phần ghi knowledge."""
+    c, brands = client
+    monkeypatch.setattr(
+        bb, "extract_voice", lambda samples: (a_voice(), bb.ExtractUsage(cost_estimate=0.02))
+    )
+    draft = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/voice", json={"samples": ["bài"]}
+    ).json()
+
+    r = c.post(
+        "/api/brands/ca_phe_abc/bootstrap/apply",
+        json={"files": draft["files"], "sources": {"../../xau": "nội dung"}},
+    )
+
+    assert r.status_code == 200, "file knowledge vẫn phải được ghi"
+    assert "content_framework.md" in r.json()["written"]
+    assert not (brands / "ca_phe_abc" / "_sources").exists()

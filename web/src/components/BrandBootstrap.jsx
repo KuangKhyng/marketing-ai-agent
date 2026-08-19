@@ -100,10 +100,18 @@ export default function BrandBootstrap({ brandId, onApplied, showToast }) {
   const handleApply = async () => {
     setBusy(true);
     try {
+      // Giữ nguyên văn tài liệu, như luồng tạo brand. Tên đặt theo chặng để
+      // sau nhìn vào _sources/ biết ngay bài đăng hay hồ sơ brand.
+      const sources = {};
+      filled.forEach((text, i) => {
+        sources[`${stage === 'voice' ? 'bai_dang' : 'tai_lieu'}_${i + 1}`] = text;
+      });
+
       await brandsAPI.bootstrapApply(brandId, {
         files: draft.files.filter(f => chosen[f.path]),
         voice_profile: takeVoice ? draft.voice_profile : null,
         brand_meta: takeMeta ? draft.brand_meta : null,
+        sources,
       });
       showToast('Đã lưu vào kho brand.');
       setDraft(null);

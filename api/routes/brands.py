@@ -103,6 +103,9 @@ class ApplyDraftRequest(BaseModel):
     files: list[brand_bootstrap.FileDraft] = Field(default_factory=list)
     voice_profile: Optional[dict] = None
     brand_meta: Optional[dict] = None
+    # Nguyên văn tài liệu đã dán — giữ lại như luồng tạo brand, để sau đọc lại
+    # được bằng prompt tốt hơn mà không phải đi tìm bài cũ.
+    sources: dict[str, str] = Field(default_factory=dict)
 
 
 # === Brand CRUD ===
@@ -260,7 +263,9 @@ def bootstrap_apply(brand_id: str, req: ApplyDraftRequest):
     """Ghi phần người dùng đã duyệt. Không duyệt thì không ghi."""
     _require_brand(brand_id)
 
-    if not req.files and not req.voice_profile and not req.brand_meta:
+    # sources cũng tính: lưu riêng tài liệu gốc mà không ghi knowledge nào là
+    # thao tác hợp lệ.
+    if not (req.files or req.voice_profile or req.brand_meta or req.sources):
         raise HTTPException(
             status_code=400, detail={"message": "Chưa chọn gì để lưu."}
         )
@@ -271,6 +276,7 @@ def bootstrap_apply(brand_id: str, req: ApplyDraftRequest):
         req.files,
         voice_profile=req.voice_profile,
         brand_meta=req.brand_meta,
+        sources=req.sources,
     )
 
 
