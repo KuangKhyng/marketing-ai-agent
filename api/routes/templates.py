@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.config.settings import PROJECT_ROOT
-from src.utils.paths import safe_join, validate_id
+from src.utils.paths import atomic_write_text, safe_join, validate_id
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ def create_template(data: TemplateCreate):
     }
 
     path = _template_path(template_id)
-    path.write_text(json.dumps(template, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(path, json.dumps(template, ensure_ascii=False, indent=2))
     return template
 
 

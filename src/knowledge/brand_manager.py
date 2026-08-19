@@ -19,7 +19,13 @@ from typing import Optional
 from datetime import datetime
 
 from src.config.settings import PROJECT_ROOT
-from src.utils.paths import InvalidPathError, is_valid_id, safe_join, validate_id
+from src.utils.paths import (
+    InvalidPathError,
+    atomic_write_text,
+    is_valid_id,
+    safe_join,
+    validate_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -198,18 +204,18 @@ class BrandManager:
         self._save_brand_meta(brand_id, meta)
 
         # Create default template files
-        (brand_dir / "identity.md").write_text(
+        atomic_write_text(
+            brand_dir / "identity.md",
             f"# {name}\n\n## Brand Identity\n\n(Thêm brand identity tại đây)\n\n"
             f"## Mission\n\n(Sứ mệnh)\n\n"
             f"## Unique Selling Proposition (USP)\n\n(Điều gì khiến brand khác biệt)\n\n"
             f"## Brand Values\n\n- (Giá trị 1)\n- (Giá trị 2)\n",
-            encoding="utf-8",
         )
-        (brand_dir / "tone_of_voice.md").write_text(
+        atomic_write_text(
+            brand_dir / "tone_of_voice.md",
             f"# Tone of Voice — {name}\n\n## Overall Tone\n\n(Mô tả tone tại đây)\n\n"
             f"## Do's\n\n- (Nên viết kiểu gì)\n\n"
             f"## Don'ts\n\n- (Không viết kiểu gì)\n",
-            encoding="utf-8",
         )
 
         # Create default voice profile
@@ -235,9 +241,9 @@ class BrandManager:
                 "Avoid 'Trong thế giới hiện đại'",
             ],
         }
-        (brand_dir / "voice_profile.json").write_text(
+        atomic_write_text(
+            brand_dir / "voice_profile.json",
             json.dumps(voice_profile, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
         return meta
@@ -314,8 +320,8 @@ class BrandManager:
             try:
                 profile = json.loads(voice_path.read_text(encoding="utf-8"))
                 profile["profile_id"] = new_id
-                voice_path.write_text(
-                    json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+                atomic_write_text(
+                    voice_path, json.dumps(profile, ensure_ascii=False, indent=2)
                 )
             except (OSError, ValueError) as e:
                 logger.warning("Không sửa được profile_id khi nhân bản: %s", e)
@@ -358,6 +364,24 @@ class BrandManager:
             return file_path.read_text(encoding="utf-8")
         return None
 
+    def doc_target(self, brand_id: str, doc_path: str) -> Path:
+        """
+        Đường dẫn thật của một document, đã qua kiểm an toàn.
+
+        Dùng khi cần GOM nhiều file rồi ghi một lượt (xem apply_draft) thay vì
+        ghi lần lượt từng cái.
+        """
+        if not doc_path.endswith(".md"):
+            doc_path += ".md"
+        return self._doc_path(brand_id, doc_path)
+
+    def touch_brand(self, brand_id: str) -> None:
+        """Cập nhật updated_at sau khi nội dung brand thay đổi."""
+        meta = self._load_brand_meta(brand_id)
+        if meta:
+            meta["updated_at"] = datetime.now().isoformat()
+            self._save_brand_meta(brand_id, meta)
+
     def save_document(self, brand_id: str, doc_path: str, content: str) -> bool:
         """Create or update a document."""
         if not doc_path.endswith(".md"):
@@ -365,7 +389,7 @@ class BrandManager:
 
         file_path = self._doc_path(brand_id, doc_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding="utf-8")
+        atomic_write_text(file_path, content)
 
         # Update brand modified time
         meta = self._load_brand_meta(brand_id)
@@ -411,7 +435,7 @@ class BrandManager:
             stt += 1
             path = base_dir / f"{name}_{stt}.txt"
 
-        path.write_text(text, encoding="utf-8")
+        atomic_write_text(path, text)
         return f"_sources/{path.name}"
 
     def list_sources(self, brand_id: str) -> list[str]:
@@ -434,10 +458,7 @@ class BrandManager:
         file_path = self._brand_dir(brand_id) / "voice_profile.json"
         if not file_path.parent.exists():
             return False
-        file_path.write_text(
-            json.dumps(profile, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(file_path, json.dumps(profile, ensure_ascii=False, indent=2))
         return True
 
     # === Knowledge Preview ===
@@ -508,10 +529,7 @@ class BrandManager:
 
     def _save_brand_meta(self, brand_id: str, meta: dict):
         meta_path = self._brand_dir(brand_id) / "brand.json"
-        meta_path.write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(meta_path, json.dumps(meta, ensure_ascii=False, indent=2))
 
     def _categorize_doc(self, rel_path: Path) -> str:
         """Categorize a document by its relative path."""

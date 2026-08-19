@@ -31,7 +31,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from src.knowledge.brand_manager import BrandManager
-from src.utils.paths import InvalidPathError
+from src.utils.paths import InvalidPathError, atomic_write_many, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +443,18 @@ def apply_draft(
     """
     check_write_size(files, sources)
 
+    # Gom TẤT CẢ file rồi ghi một lượt.
+    #
+    # Ghi lần lượt thì hỏng giữa chừng để lại brand nửa mới nửa cũ: identity đã
+    # đổi mà sản phẩm chưa, hoặc ngược lại. Cả hai đều là nguồn sự thật mà
+    # reviewer dùng để chấm, nên trạng thái lẫn lộn còn tệ hơn không ghi gì.
     written = []
-    for f in files:
-        manager.save_document(brand_id, f.path, f.content)
-        written.append(f.path)
+    if files:
+        atomic_write_many(
+            [(manager.doc_target(brand_id, f.path), f.content.encode("utf-8")) for f in files]
+        )
+        written.extend(f.path for f in files)
+        manager.touch_brand(brand_id)
 
     if voice_profile:
         manager.update_voice_profile(brand_id, voice_profile)
@@ -593,7 +601,7 @@ def _cache_write(key: str, value) -> None:
     try:
         d = _cache_dir()
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{key}.json").write_text(value.model_dump_json(indent=2), encoding="utf-8")
+        atomic_write_text(d / f"{key}.json", value.model_dump_json(indent=2))
     except OSError as e:
         logger.warning("Không ghi được cache bootstrap: %s", e)
 

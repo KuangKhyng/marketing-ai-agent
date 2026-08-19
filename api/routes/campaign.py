@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from threading import Lock
 from pathlib import Path
 from src.config.settings import PROJECT_ROOT
-from src.utils.paths import safe_join, validate_id
+from src.utils.paths import atomic_write_bytes, safe_join, validate_id
 
 _SESSIONS_DIR = PROJECT_ROOT / "outputs"
 
@@ -97,8 +97,9 @@ class SessionStore:
         path = self._state_path(run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(path, "wb") as f:
-                pickle.dump({"version": _STATE_VERSION, "state": runner.state}, f)
+            atomic_write_bytes(
+                path, pickle.dumps({"version": _STATE_VERSION, "state": runner.state})
+            )
         except Exception as e:
             # Không được làm crash request, nhưng phải biết: mất persist nghĩa
             # là user F5 hoặc server restart là mất phiên.

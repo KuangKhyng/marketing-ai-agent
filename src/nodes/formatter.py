@@ -22,6 +22,7 @@ from rich.markdown import Markdown as RichMarkdown
 
 from src.models.trace import NodeTrace, RunTrace
 from src.config.settings import PROJECT_ROOT
+from src.utils.paths import atomic_write_text
 
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 
@@ -60,22 +61,16 @@ def formatter_node(state: dict) -> dict:
         # 1. Save as Markdown
         markdown_content = _build_markdown(content, brief, review_result, trace)
         md_path = run_dir / "content.md"
-        md_path.write_text(markdown_content, encoding="utf-8")
+        atomic_write_text(md_path, markdown_content)
 
         # 2. Save as JSON
         json_output = _build_json(content, brief, review_result, trace)
         json_path = run_dir / "content.json"
-        json_path.write_text(
-            json.dumps(json_output, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(json_path, json.dumps(json_output, ensure_ascii=False, indent=2))
 
         # 3. Save trace
         trace_path = run_dir / "trace.json"
-        trace_path.write_text(
-            trace.model_dump_json(indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(trace_path, trace.model_dump_json(indent=2))
 
         # KHÔNG in nội dung ra stdout ở đây.
         #
@@ -93,10 +88,7 @@ def formatter_node(state: dict) -> dict:
         trace.brief_summary = f"Campaign for {brief.offer.product_or_service}: {brief.goal.value}"
 
         # Re-save trace with final status
-        trace_path.write_text(
-            trace.model_dump_json(indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_text(trace_path, trace.model_dump_json(indent=2))
 
         return {
             "current_node": "formatter",
