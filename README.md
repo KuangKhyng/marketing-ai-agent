@@ -309,3 +309,40 @@ nội dung đã commit ở đó. Lúc build, nixpacks copy `knowledge_base/` san
 ## 📝 License
 
 MIT
+
+
+## Thư viện nội dung
+
+Sau bước chấm chất lượng hoặc tại màn hình Bàn giao, đặt **Tên bản lưu** và
+bấm **Lưu phiên bản**. Mở **Thư viện nội dung** trong menu để tìm theo tên/mã
+chiến dịch, đọc từng bài, xem chiến lược và kết quả kiểm duyệt gốc, hoặc tải JSON.
+Lưu và đọc thư viện không gọi AI. Bản lưu không đồng nghĩa với duyệt đăng.
+
+- Mỗi bản là snapshot bất biến của dữ liệu server; cùng tên và cùng nội dung
+  lưu lại sẽ trả về bản đã có. Nội dung thay đổi tạo một phiên bản mới.
+- Nút lưu xuất hiện sau bước chấm chất lượng để tránh bỏ sót các chỉnh sửa tay
+  chưa gửi lên server. Không chụp dữ liệu khi cùng phiên đang chạy tác vụ khác.
+- File JSON được ghi atomic tại `outputs/library/`, độc lập với TTL 120 phút
+  của session. Cần giữ volume `/app/outputs` và sao lưu volume để dữ liệu tồn tại
+  qua deploy hoặc mất máy; thư viện không phải dịch vụ backup.
+- API `/api/library` dùng cùng cơ chế API key của ứng dụng. Đây là thư viện
+  chung của workspace, chưa phân quyền theo từng người dùng.
+- POST `/api/library`: `{ "run_id": "...", "title": "..." }`.
+  GET `/api/library`: danh sách; GET `/api/library/{id}`: bản đầy đủ;
+  GET `/api/library/{id}/download`: tải JSON độc lập với session.
+
+
+## Kế hoạch nội dung (Content Planner)
+
+Mở **Kế hoạch nội dung** trong menu để tổ chức nhiều tuần nội dung trong một workspace:
+
+- Tạo kế hoạch với mục tiêu, thương hiệu và khoảng thời gian.
+- Dựng lịch ý tưởng theo kênh và thứ trong tuần, không gọi AI.
+- Quản lý bài trên bảng **Ý tưởng → Đang viết → Chờ duyệt → Sẵn sàng → Đã đăng**
+  hoặc lịch tháng; phân công, tìm kiếm, lọc kênh và theo dõi bài quá hạn.
+- Chuyển brief sang luồng tạo nội dung hiện có; gắn bài đã duyệt từ thư viện.
+- Ghi nhận URL đã xuất bản, ẩn/khôi phục bài, xem hoạt động và xuất CSV.
+
+Dữ liệu được lưu bằng SQLite trong `outputs/planner.sqlite3`, có kiểm tra phiên bản
+để tránh ghi đè khi hai tab cùng sửa. Ngày dự kiến không tự đăng bài lên mạng xã hội.
+Xem hướng dẫn và giới hạn trong [Content Planner](docs/CONTENT_PLANNER.md).

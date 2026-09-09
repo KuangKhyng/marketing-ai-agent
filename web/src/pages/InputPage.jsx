@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { campaignAPI, brandsAPI, templatesAPI } from '../api/client';
 import { Loader2, X } from 'lucide-react';
 import { useToast } from '../components/Toast';
@@ -20,9 +20,11 @@ const CHANNELS = [
 
 export default function InputPage({ setCampaignData, setPhase, loading, setLoading }) {
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const plannerBrief = state?.plannerBrief;
   const { showToast, Toast } = useToast();
-  const [mode, setMode] = useState('structured');
-  const [freeText, setFreeText] = useState('');
+  const [mode, setMode] = useState(plannerBrief ? 'free_text' : 'structured');
+  const [freeText, setFreeText] = useState(plannerBrief?.text || '');
   const [brands, setBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [language, setLanguage] = useState('vi');
@@ -135,6 +137,7 @@ export default function InputPage({ setCampaignData, setPhase, loading, setLoadi
 
   return (
     <div className="rise">
+      {plannerBrief && <aside className="sheet p-5 space-y-2"><p className="font-medium">Brief từ kế hoạch: {plannerBrief.title}</p><p className="text-sm text-ink-2">Kiểm tra brief và chọn brand trước khi bắt đầu. Sau khi duyệt nội dung, lưu vào thư viện rồi gắn vào công việc.</p><Link className="text-sm underline" to={`/plans/${plannerBrief.planId}`}>Quay lại kế hoạch</Link></aside>}
       {/* Hero căn giữa — khoảnh khắc mở đầu, chỗ duy nhất trong app được phép kịch tính */}
       <motion.header
         className="text-center pt-6 pb-14 md:pt-14 md:pb-20"

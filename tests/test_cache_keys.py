@@ -114,9 +114,27 @@ class TestVersionTheoHeThong:
         gia = tmp_path / "prompt_gia.md"
         gia.write_text("prompt đã sửa", encoding="utf-8")
         monkeypatch.setattr(cache_mod, "_SYSTEM_FILES", [gia])
-        cache_mod._system_digest.cache_clear()
 
         sau = campaign_cache.content_key(RAW, "abc", brief, "S", {"product": "X"})
-        cache_mod._system_digest.cache_clear()
 
         assert truoc != sau, "sửa prompt mà kết quả cũ vẫn được dùng lại là sai"
+
+
+def test_cache_preserves_case_and_whitespace():
+    from api.cache import _digest
+    assert _digest("Brand ABC") != _digest("Brand abc")
+    assert _digest(" a") != _digest("a")
+    assert _digest("a\x1fb", "c") != _digest("a", "b\x1fc")
+
+
+def test_prompt_edit_without_mtime_change_invalidates_cache(tmp_path, monkeypatch):
+    import os
+    import api.cache as cache
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("before", encoding="utf-8")
+    monkeypatch.setattr(cache, "_SYSTEM_FILES", [prompt])
+    stamp = prompt.stat()
+    before = cache.system_version()
+    prompt.write_text("after!", encoding="utf-8")
+    os.utime(prompt, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert cache.system_version() != before

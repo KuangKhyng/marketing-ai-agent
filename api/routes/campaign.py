@@ -658,7 +658,13 @@ def list_campaigns():
             if run_dir.is_dir():
                 trace_path = run_dir / "trace.json"
                 if trace_path.exists():
-                    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+                    try:
+                        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+                        if not isinstance(trace, dict):
+                            continue
+                    except (OSError, ValueError):
+                        logger.warning("Skipping unreadable campaign trace: %s", trace_path)
+                        continue
                     runs.append({
                         "run_id": run_dir.name,
                         "brief_summary": trace.get("brief_summary", ""),
@@ -666,7 +672,7 @@ def list_campaigns():
                         "cost": trace.get("total_cost_estimate", 0),
                         "timestamp": trace.get("started_at", ""),
                     })
-    return runs
+    return sorted(runs, key=lambda run: str(run["timestamp"] or ""), reverse=True)
 
 
 def _infer_phase(state: dict) -> str:
