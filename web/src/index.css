@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+.planner-dialog { margin: auto; }
+.planner-dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(5px); }
+.planner-progress { accent-color: var(--cham); }
+.planner-progress::-webkit-progress-bar { background: var(--inset); border-radius: 10px; }
+.planner-progress::-webkit-progress-value { background: var(--cham); border-radius: 10px; }
+.planner-card:focus-visible { outline: 2px solid var(--cham); outline-offset: 3px; }
+
 /* ============================================================
    OBSIDIAN — hệ thiết kế
    Nền đá đen, vàng làm điểm nhấn, viền tóc bắt sáng ở mép trên.

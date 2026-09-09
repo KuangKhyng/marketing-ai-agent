@@ -105,6 +105,24 @@ export const campaignAPI = {
   history: () => api.get('/campaigns/history'),
 };
 
+export const libraryAPI = {
+  list: () => api.get('/library'),
+  get: (id) => api.get(`/library/${encodeURIComponent(id)}`),
+  save: (runId, title) => api.post('/library', { run_id: runId, title }),
+  download: (id) => api.get(`/library/${encodeURIComponent(id)}/download`, { responseType: 'blob' }),
+};
+
+export const plansAPI = {
+  list: () => api.get('/plans'),
+  create: (payload) => api.post('/plans', payload),
+  get: (id) => api.get(`/plans/${encodeURIComponent(id)}`),
+  update: (id, payload) => api.put(`/plans/${encodeURIComponent(id)}`, payload),
+  addTask: (id, payload) => api.post(`/plans/${encodeURIComponent(id)}/tasks`, payload),
+  updateTask: (id, taskId, payload) => api.put(`/plans/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}`, payload),
+  cadence: (id, payload) => api.post(`/plans/${encodeURIComponent(id)}/cadence`, payload),
+  export: (id) => api.get(`/plans/${encodeURIComponent(id)}/export`, { responseType: 'blob' }),
+};
+
 export const brandsAPI = {
   list: () => api.get('/brands/'),
   get: (brandId) => api.get(`/brands/${brandId}`),

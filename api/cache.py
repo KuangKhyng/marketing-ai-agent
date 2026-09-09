@@ -20,9 +20,9 @@ TTL = 24h (theo file mtime).
 Run đã đi qua vòng sửa của user thì không đọc/ghi cache — xem `is_cacheable`.
 """
 import hashlib
+import json
 import logging
 import pickle
-from functools import lru_cache
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
@@ -37,33 +37,20 @@ _TTL = timedelta(hours=24)
 
 # Tăng số này khi schema của object được pickle thay đổi. Key đổi theo nên file
 # cũ bị bỏ qua, thay vì unpickle ra object thiếu field.
-_SCHEMA_VERSION = "2"
+_SCHEMA_VERSION = "3"
 
 
 def _digest(*parts: str) -> str:
-    """Hash các thành phần của key. Có separator để ('a','bc') != ('ab','c')."""
-    h = hashlib.sha256()
-    h.update(_SCHEMA_VERSION.encode("utf-8"))
-    for p in parts:
-        h.update(b"\x1f")
-        h.update((p or "").strip().lower().encode("utf-8"))
-    return h.hexdigest()[:16]
+    """Hash các thành phần của key. JSON preserves exact values and component boundaries."""
+    payload = json.dumps([_SCHEMA_VERSION, *parts], ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
-@lru_cache(maxsize=1)
-def _system_digest(dau_van: float) -> str:
-    """
-    Chữ ký của prompt + cấu hình model.
-
-    Sửa prompt hoặc đổi model thì kết quả cũ không còn so sánh được nữa, phải
-    sinh lại. Tham số `dau_van` là mtime lớn nhất trong các file đó — đổi file
-    là đổi khoá, không cần restart server.
-    """
-    h = hashlib.sha256()
-    for path in sorted(_SYSTEM_FILES):
-        if path.exists():
-            h.update(path.read_bytes())
-    return h.hexdigest()[:12]
+def _system_digest() -> str:
+    """Hash exact file contents and names; timestamps are not a content identity."""
+    files = [(str(path), path.read_bytes().hex())
+             for path in sorted(_SYSTEM_FILES) if path.exists()]
+    return _digest(json.dumps(files))
 
 
 def _system_files() -> list[Path]:
@@ -77,8 +64,7 @@ _SYSTEM_FILES = _system_files()
 
 def system_version() -> str:
     """Phiên bản prompt+model hiện tại, dùng làm một phần khoá cache."""
-    mtimes = [p.stat().st_mtime for p in _SYSTEM_FILES if p.exists()]
-    return _system_digest(max(mtimes) if mtimes else 0.0)
+    return _system_digest()
 
 
 def knowledge_digest(context_pack: Any) -> str:

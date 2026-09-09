@@ -27,6 +27,7 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
   const navigate = useNavigate();
   const location = useLocation();
   const isKnowledge = location.pathname.startsWith('/knowledge');
+  const isPlanner = location.pathname.startsWith('/plans');
   useSpotlight();
 
   const startNew = () => { if (onReset) onReset(); navigate('/'); };
@@ -36,7 +37,7 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
       <Scene intensity={isKnowledge ? 0.28 : 1} />
       <aside className="relative z-10 shrink-0 w-full md:w-[268px] flex md:flex-col md:h-[calc(100vh-2rem)] md:m-4 md:mr-0
                         sheet !rounded-[18px] overflow-hidden">
-        <div className="flex md:block items-center justify-between w-full px-5 py-4 md:px-7 md:py-8">
+        <div className="flex flex-wrap gap-3 md:block items-center justify-between w-full px-5 py-4 md:px-7 md:py-8">
           <button onClick={() => navigate('/')} className="text-left group">
             <div className="flex items-center gap-2.5">
               <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -49,7 +50,10 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
             <div className="t-label mt-2 md:ml-4">Nội dung đa kênh</div>
           </button>
 
-          <div className="flex md:hidden items-center gap-1.5">
+          <div className="flex md:hidden flex-wrap items-center gap-1.5">
+            <button onClick={() => navigate('/plans')} className="btn btn-default !py-2 !px-3.5 !text-[13px]">Kế hoạch</button>
+            <button onClick={() => navigate('/library')} className="btn btn-default !py-2 !px-3.5 !text-[13px]">Thư viện</button>
+            <button onClick={() => navigate('/history')} className="btn btn-default !py-2 !px-3.5 !text-[13px]">Lịch sử</button>
             <button onClick={() => navigate('/knowledge')} className="btn btn-default !py-2 !px-3.5 !text-[13px]">
               Kho brand
             </button>
@@ -67,6 +71,9 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
         {!showCampaignNav && <div className="hidden md:block flex-1" />}
 
         <div className="hidden md:flex flex-col gap-2 p-5 border-t border-rule">
+          <button onClick={() => navigate('/plans')} aria-current={isPlanner ? 'page' : undefined} className={`btn w-full !justify-start ${isPlanner ? 'btn-default' : 'btn-quiet'}`}>Kế hoạch nội dung</button>
+          <button onClick={() => navigate('/library')} className="btn btn-quiet w-full !justify-start">Thư viện nội dung</button>
+          <button onClick={() => navigate('/history')} className="btn btn-quiet w-full !justify-start">Lịch sử chiến dịch</button>
           <button
             onClick={() => navigate('/knowledge')}
             className={`btn w-full !justify-start ${isKnowledge ? 'btn-default' : 'btn-quiet'}`}
@@ -79,8 +86,8 @@ export default function Layout({ children, phase, phases, onReset, showCampaignN
         </div>
       </aside>
 
-      <main className="relative z-10 flex-1 md:overflow-y-auto">
-        <div className="mx-auto w-full max-w-[880px] px-5 py-9 md:px-10 md:py-12">
+      <main className="relative z-10 flex-1 min-w-0 md:overflow-y-auto">
+        <div className={`mx-auto w-full ${isPlanner ? 'max-w-[1500px]' : 'max-w-[880px]'} px-5 py-9 md:px-10 md:py-12`}>
           {children}
         </div>
       </main>

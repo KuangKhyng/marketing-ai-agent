@@ -52,8 +52,13 @@ async def invalid_path_handler(request: Request, exc: InvalidPathError):
 from api.routes.campaign import router as campaign_router
 from api.routes.brands import router as brands_router
 from api.routes.templates import router as templates_router
+from api.routes.library import router as library_router
+from api.routes.plans import router as plans_router
 
 _protected = [Depends(require_api_key)]
+
+app.include_router(library_router, prefix="/api/library", tags=["library"], dependencies=_protected)
+app.include_router(plans_router, prefix="/api/plans", tags=["plans"], dependencies=_protected)
 
 app.include_router(
     campaign_router, prefix="/api/campaigns", tags=["campaigns"], dependencies=_protected

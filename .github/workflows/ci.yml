@@ -49,7 +49,7 @@ jobs:
         run: python -m evals.runner --tier retrieval --baseline evals/baseline/retrieval.json
 
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (test + lint + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +68,10 @@ jobs:
         working-directory: web
         # Có 5 warning exhaustive-deps tồn tại từ trước; gate ở errors.
         run: npm run lint
+
+      - name: Unit tests
+        working-directory: web
+        run: npm test
 
       - name: Build
         working-directory: web
